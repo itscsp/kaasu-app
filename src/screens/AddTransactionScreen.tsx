@@ -8,47 +8,69 @@ import {
   ScrollView,
   Platform,
   Alert,
-  SafeAreaView,
   StatusBar,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TransactionType } from '../types';
-import { addTransaction } from '../storage';
+import { useAuth } from '../context/AuthContext';
+import { addApiTransaction } from '../api';
 import { colors, spacing, fontSize, fontWeight, radius } from '../theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'AddTransaction'>;
+type RouteProps = RouteProp<RootStackParamList, 'AddTransaction'>;
 
-const TYPES: TransactionType[] = ['Expenses', 'Income', 'Savings', 'Investment'];
+const TYPES: { value: TransactionType; label: string }[] = [
+  { value: 'expenses', label: 'Expenses' },
+  { value: 'income', label: 'Income' },
+  { value: 'loan', label: 'Loan' },
+];
 
 export default function AddTransactionScreen() {
   const navigation = useNavigation<Nav>();
-  const [type, setType] = useState<TransactionType>('Expenses');
+  const route = useRoute<RouteProps>();
+  const { budgetId } = route.params;
+  const { credentials } = useAuth();
+
+  const [type, setType] = useState<TransactionType>('expenses');
   const [amount, setAmount] = useState('');
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
+    if (!credentials) return;
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       Alert.alert('Invalid Amount', 'Please enter a valid positive number.');
       return;
     }
-    await addTransaction({
-      id: Date.now().toString(),
-      type,
-      amount: Number(amount),
-      description: description.trim(),
-      date,
-    });
-    navigation.goBack();
+    setLoading(true);
+    try {
+      await addApiTransaction(credentials, budgetId, {
+        date,
+        amount: Number(amount),
+        type,
+        title: title.trim() || undefined,
+        description: description.trim() || undefined,
+      });
+      navigation.goBack();
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to add transaction');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const selectedLabel = TYPES.find(t => t.value === type)?.label ?? type;
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
 
-      {/* ── Nav Header ── */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.headerBack}>Back</Text>
@@ -67,29 +89,38 @@ export default function AddTransactionScreen() {
           style={styles.dropdown}
           onPress={() => setShowTypeMenu(m => !m)}
         >
-          <Text style={styles.dropdownText}>{type}</Text>
+          <Text style={styles.dropdownText}>{selectedLabel}</Text>
           <Text style={styles.dropdownChevron}>{showTypeMenu ? '∧' : '∨'}</Text>
         </TouchableOpacity>
-
         {showTypeMenu && (
           <View style={styles.dropdownMenu}>
             {TYPES.map((t, i) => (
               <TouchableOpacity
-                key={t}
+                key={t.value}
                 style={[
                   styles.dropdownItem,
                   i < TYPES.length - 1 && styles.dropdownItemBorder,
-                  type === t && styles.dropdownItemActive,
+                  type === t.value && styles.dropdownItemActive,
                 ]}
-                onPress={() => { setType(t); setShowTypeMenu(false); }}
+                onPress={() => { setType(t.value); setShowTypeMenu(false); }}
               >
-                <Text style={[styles.dropdownItemText, type === t && styles.dropdownItemTextActive]}>
-                  {t}
+                <Text style={[styles.dropdownItemText, type === t.value && styles.dropdownItemTextActive]}>
+                  {t.label}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
         )}
+
+        {/* ── Title ── */}
+        <TextInput
+          style={styles.inputField}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Title (optional)"
+          placeholderTextColor={colors.textMuted}
+          returnKeyType="next"
+        />
 
         {/* ── Amount ── */}
         <TextInput
@@ -126,8 +157,16 @@ export default function AddTransactionScreen() {
         />
 
         {/* ── Add Button ── */}
-        <TouchableOpacity style={styles.addBtn} onPress={handleAdd}>
-          <Text style={styles.addBtnText}>Add</Text>
+        <TouchableOpacity
+          style={[styles.addBtn, loading && styles.addBtnDisabled]}
+          onPress={handleAdd}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator size="small" color={colors.textPrimary} />
+          ) : (
+            <Text style={styles.addBtnText}>Add</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -147,24 +186,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headerBack: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.medium,
-    color: colors.textPrimary,
-    minWidth: 40,
-  },
-  headerTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
-  },
+  headerBack: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.textPrimary, minWidth: 40 },
+  headerTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary },
 
-  content: {
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
+  content: { padding: spacing.md, gap: spacing.sm },
 
-  // Dropdown
   dropdown: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -175,16 +201,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   },
-  dropdownText: {
-    flex: 1,
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
-    fontWeight: fontWeight.medium,
-  },
-  dropdownChevron: {
-    fontSize: 13,
-    color: colors.textMuted,
-  },
+  dropdownText: { flex: 1, fontSize: fontSize.md, color: colors.textPrimary, fontWeight: fontWeight.medium },
+  dropdownChevron: { fontSize: 13, color: colors.textMuted },
   dropdownMenu: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
@@ -192,27 +210,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
-  dropdownItem: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  dropdownItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  dropdownItemActive: {
-    backgroundColor: colors.bg,
-  },
-  dropdownItemText: {
-    fontSize: fontSize.md,
-    color: colors.textSecondary,
-  },
-  dropdownItemTextActive: {
-    color: colors.textPrimary,
-    fontWeight: fontWeight.semibold,
-  },
+  dropdownItem: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  dropdownItemActive: { backgroundColor: colors.bg },
+  dropdownItemText: { fontSize: fontSize.md, color: colors.textSecondary },
+  dropdownItemTextActive: { color: colors.textPrimary, fontWeight: fontWeight.semibold },
 
-  // Inputs
   inputField: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
@@ -223,12 +226,8 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.textPrimary,
   },
-  textArea: {
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
+  textArea: { minHeight: 100, textAlignVertical: 'top' },
 
-  // Add Button
   addBtn: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
@@ -237,10 +236,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
     alignItems: 'center',
     marginTop: spacing.sm,
+    minHeight: 48,
+    justifyContent: 'center',
   },
-  addBtnText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
-  },
+  addBtnDisabled: { opacity: 0.6 },
+  addBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textPrimary },
 });

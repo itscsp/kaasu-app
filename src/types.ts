@@ -1,24 +1,44 @@
-export type TransactionType = 'Expenses' | 'Income' | 'Savings' | 'Investment';
+// ─── API Types ────────────────────────────────────────────────────────────────
 
-export interface Transaction {
-  id: string;
-  type: TransactionType;
+export type TransactionType = 'income' | 'expenses' | 'loan';
+
+export interface ApiTransaction {
+  id: number;
+  date: string;
   amount: number;
-  description: string;
-  date: string; // ISO date string
-  group?: string;
+  type: TransactionType;
+  title?: string;
+  description?: string;
+  tags?: number[];
 }
 
-export interface MonthData {
-  key: string; // e.g. "2025-06"
-  label: string; // e.g. "June 2025"
-  transactions: Transaction[];
+export interface ApiSummary {
+  income: number;
+  expenses: number;
+  loan: number;
+  balance: number;
 }
+
+export interface ApiBudget {
+  id: number;
+  title: string;
+  date: string;
+  transactions?: ApiTransaction[];
+  summary?: ApiSummary;
+}
+
+export interface ApiTag {
+  id: number;
+  name: string;
+}
+
+// ─── Navigation ──────────────────────────────────────────────────────────────
 
 export type RootStackParamList = {
+  Login: undefined;
   Home: undefined;
-  AddTransaction: undefined;
-  EditTransaction: { transaction: Transaction };
+  AddTransaction: { budgetId: number };
+  EditTransaction: { budgetId: number; transaction: ApiTransaction };
   Archive: undefined;
-  ArchiveMonth: { monthKey: string; monthLabel: string };
+  BudgetDetail: { budgetId: number; budgetTitle: string };
 };
