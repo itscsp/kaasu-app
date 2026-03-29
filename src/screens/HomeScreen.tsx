@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,18 +9,25 @@ import {
   StatusBar,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList, ApiBudget, ApiTransaction, ApiSummary } from '../types';
+import { RootStackParamList, ApiBudget, ApiTransaction, ApiSummary, ApiPlan } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import {
   getBudgets,
   createBudget,
-  getTransactions,
   getBudgetSummary,
+  getTransactions,
   deleteApiTransaction,
+  getPlans,
+  createPlan,
+  updatePlan,
+  deletePlan,
 } from '../api';
 import { colors, spacing, fontSize, fontWeight, radius } from '../theme';
 
@@ -30,6 +37,8 @@ const MONTH_NAMES = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
 ];
+
+type ActiveTab = 'transactions' | 'plans';
 
 // ─── Transaction Row ──────────────────────────────────────────────────────────
 function TransactionRow({
@@ -91,17 +100,54 @@ function TransactionRow({
   );
 }
 
+// ─── Plan Row ─────────────────────────────────────────────────────────────────
+function PlanRow({
+  plan,
+  onEdit,
+  onDelete,
+}: {
+  plan: ApiPlan;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <View style={styles.planRow}>
+      <View style={styles.planInfo}>
+        <Text style={styles.planTitle}>{plan.title}</Text>
+        <Text style={styles.planAmount}>₹{Number(plan.amount).toLocaleString()}</Text>
+      </View>
+      <View style={styles.planActions}>
+        <TouchableOpacity style={styles.planBtn} onPress={onEdit}>
+          <Text style={styles.planBtnText}>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.planBtn, styles.planBtnDanger]} onPress={onDelete}>
+          <Text style={[styles.planBtnText, { color: colors.expense }]}>Del</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // ─── Home Screen ──────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const { credentials, logout } = useAuth();
+  const { invalidateBudgetDetails, invalidatePlans } = useData();
 
   const [budget, setBudget] = useState<ApiBudget | null>(null);
   const [transactions, setTransactions] = useState<ApiTransaction[]>([]);
   const [summary, setSummary] = useState<ApiSummary | null>(null);
+  const [plans, setPlans] = useState<ApiPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'current' | 'archive'>('current');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('transactions');
+
+  // Plan form state
+  const [showAddPlan, setShowAddPlan] = useState(false);
+  const [planTitle, setPlanTitle] = useState('');
+  const [planAmount, setPlanAmount] = useState('');
+  const [editingPlan, setEditingPlan] = useState<ApiPlan | null>(null);
+  const [savingPlan, setSavingPlan] = useState(false);
 
   const now = new Date();
   const currentMonthLabel = `${MONTH_NAMES[now.getMonth()]} ${now.getFullYear()}`;
@@ -111,29 +157,27 @@ export default function HomeScreen() {
       if (!credentials) return;
       if (!isRefresh) setLoading(true);
       try {
-        // Get all budgets and find current month
         const budgets = await getBudgets(credentials, now.getFullYear());
-        const monthTitle = currentMonthLabel; // e.g. "March 2026"
-
         let currentBudget = budgets.find(b =>
           b.title.toLowerCase().includes(MONTH_NAMES[now.getMonth()].toLowerCase()) &&
           b.title.includes(String(now.getFullYear()))
         ) ?? null;
 
-        // Auto-create current month budget if missing
         if (!currentBudget) {
-          currentBudget = await createBudget(credentials, monthTitle);
+          currentBudget = await createBudget(credentials, currentMonthLabel);
         }
 
         setBudget(currentBudget);
 
-        const [txns, sum] = await Promise.all([
+        const [txns, sum, plansData] = await Promise.all([
           getTransactions(credentials, currentBudget.id),
           getBudgetSummary(credentials, currentBudget.id),
+          getPlans(credentials, currentBudget.id),
         ]);
 
         setTransactions([...txns].sort((a, b) => b.date.localeCompare(a.date)));
         setSummary(sum);
+        setPlans(plansData);
       } catch (e: any) {
         Alert.alert('Error', e?.message ?? 'Failed to load data');
       } finally {
@@ -156,6 +200,7 @@ export default function HomeScreen() {
         onPress: async () => {
           try {
             await deleteApiTransaction(credentials, budget.id, tid);
+            if (budget) invalidateBudgetDetails(budget.id);
             load();
           } catch (e: any) {
             Alert.alert('Error', e?.message ?? 'Failed to delete');
@@ -172,9 +217,74 @@ export default function HomeScreen() {
     ]);
   };
 
+  // Plans handlers
+  const handleSavePlan = async () => {
+    if (!credentials || !budget || !planTitle.trim() || !planAmount) return;
+    setSavingPlan(true);
+    try {
+      if (editingPlan) {
+        await updatePlan(credentials, budget.id, editingPlan.id, {
+          title: planTitle.trim(),
+          amount: Number(planAmount),
+        });
+      } else {
+        await createPlan(credentials, budget.id, {
+          title: planTitle.trim(),
+          amount: Number(planAmount),
+        });
+      }
+      setPlanTitle('');
+      setPlanAmount('');
+      setShowAddPlan(false);
+      setEditingPlan(null);
+      invalidatePlans(budget.id);
+      const updated = await getPlans(credentials, budget.id);
+      setPlans(updated);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message ?? 'Failed to save plan');
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const handleDeletePlan = (plan: ApiPlan) => {
+    if (!credentials || !budget) return;
+    Alert.alert('Delete Plan', `Delete "${plan.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deletePlan(credentials, budget.id, plan.id);
+            invalidatePlans(budget.id);
+            const updated = await getPlans(credentials, budget.id);
+            setPlans(updated);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message ?? 'Failed to delete plan');
+          }
+        },
+      },
+    ]);
+  };
+
+  const startEditPlan = (plan: ApiPlan) => {
+    setEditingPlan(plan);
+    setPlanTitle(plan.title);
+    setPlanAmount(String(plan.amount));
+    setShowAddPlan(true);
+  };
+
+  const cancelPlanForm = () => {
+    setShowAddPlan(false);
+    setEditingPlan(null);
+    setPlanTitle('');
+    setPlanAmount('');
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
       {/* ── Header ── */}
       <View style={styles.header}>
@@ -185,7 +295,7 @@ export default function HomeScreen() {
               onPress={() => navigation.navigate('AddTransaction', { budgetId: budget.id })}
               style={styles.headerBtn}
             >
-              <Text style={styles.headerAction}>Add</Text>
+              <Text style={styles.headerAction}>+ Add</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity onPress={handleLogout} style={styles.headerBtn}>
@@ -225,13 +335,34 @@ export default function HomeScreen() {
         </View>
       )}
 
+      {/* ── Tab Bar ── */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'transactions' && styles.tabActive]}
+          onPress={() => setActiveTab('transactions')}
+        >
+          <Text style={[styles.tabText, activeTab === 'transactions' && styles.tabTextActive]}>
+            Transactions
+          </Text>
+        </TouchableOpacity>
+        <View style={styles.tabSep} />
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'plans' && styles.tabActive]}
+          onPress={() => setActiveTab('plans')}
+        >
+          <Text style={[styles.tabText, activeTab === 'plans' && styles.tabTextActive]}>
+            Plans
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ── Content ── */}
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.textMuted} />
           <Text style={styles.loadingText}>Loading…</Text>
         </View>
-      ) : (
+      ) : activeTab === 'transactions' ? (
         <FlatList
           data={transactions}
           keyExtractor={item => String(item.id)}
@@ -247,7 +378,7 @@ export default function HomeScreen() {
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyText}>No transactions this month.</Text>
-              <Text style={styles.emptySub}>Tap "Add" to record your first one.</Text>
+              <Text style={styles.emptySub}>Tap "+ Add" to record your first one.</Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -264,26 +395,103 @@ export default function HomeScreen() {
             />
           )}
         />
+      ) : (
+        /* ── Plans tab ── */
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => { setRefreshing(true); load(true); }}
+              tintColor={colors.textMuted}
+            />
+          }
+        >
+          {/* Add / Edit plan form */}
+          {showAddPlan ? (
+            <View style={styles.planForm}>
+              <TextInput
+                style={styles.planInput}
+                value={planTitle}
+                onChangeText={setPlanTitle}
+                placeholder="Plan title"
+                placeholderTextColor={colors.textMuted}
+              />
+              <TextInput
+                style={styles.planInput}
+                value={planAmount}
+                onChangeText={setPlanAmount}
+                placeholder="Amount"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+              <View style={styles.planFormBtns}>
+                <TouchableOpacity
+                  style={[styles.planFormBtn, styles.planFormBtnPrimary]}
+                  onPress={handleSavePlan}
+                  disabled={savingPlan}
+                >
+                  {savingPlan ? (
+                    <ActivityIndicator size="small" color={colors.surface} />
+                  ) : (
+                    <Text style={styles.planFormBtnPrimaryText}>
+                      {editingPlan ? 'Update Plan' : 'Add Plan'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.planFormBtn} onPress={cancelPlanForm}>
+                  <Text style={styles.planFormBtnText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.addPlanBtn}
+              onPress={() => { setShowAddPlan(true); setEditingPlan(null); }}
+            >
+              <Text style={styles.addPlanBtnText}>+ Add Plan</Text>
+            </TouchableOpacity>
+          )}
+
+          {plans.length === 0 && !showAddPlan ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No plans yet.</Text>
+              <Text style={styles.emptySub}>Add a budget goal above.</Text>
+            </View>
+          ) : (
+            plans.map(plan => (
+              <PlanRow
+                key={plan.id}
+                plan={plan}
+                onEdit={() => startEditPlan(plan)}
+                onDelete={() => handleDeletePlan(plan)}
+              />
+            ))
+          )}
+        </ScrollView>
       )}
 
-      {/* ── Tab Bar ── */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={styles.tab}
-          onPress={() => setActiveTab('current')}
-        >
-          <Text style={[styles.tabText, activeTab === 'current' && styles.tabTextActive]}>
+      {/* ── Bottom Tab Bar ── */}
+      <View style={styles.bottomBar}>
+        <TouchableOpacity style={styles.bottomTab}>
+          <Text style={[styles.bottomTabText, styles.bottomTabActive]}>
             {MONTH_NAMES[now.getMonth()]}
           </Text>
         </TouchableOpacity>
         <View style={styles.tabSep} />
         <TouchableOpacity
-          style={styles.tab}
-          onPress={() => { setActiveTab('archive'); navigation.navigate('Archive'); }}
+          style={styles.bottomTab}
+          onPress={() => navigation.navigate('Archive')}
         >
-          <Text style={[styles.tabText, activeTab === 'archive' && styles.tabTextActive]}>
-            Archive
-          </Text>
+          <Text style={styles.bottomTabText}>Archive</Text>
+        </TouchableOpacity>
+        <View style={styles.tabSep} />
+        <TouchableOpacity
+          style={styles.bottomTab}
+          onPress={() => navigation.navigate('Tags')}
+        >
+          <Text style={styles.bottomTabText}>Tags</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -304,28 +512,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  headerTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
+  headerTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   headerBtn: { paddingVertical: 2 },
-  headerAction: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
-  },
-  headerLogout: {
-    fontSize: fontSize.md,
-    color: colors.textMuted,
-  },
+  headerAction: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textPrimary },
+  headerLogout: { fontSize: fontSize.md, color: colors.textMuted },
 
-  // Summary bar
   summaryRow: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
@@ -333,33 +525,30 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
     paddingVertical: spacing.sm,
   },
-  summaryItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.xs,
-  },
-  summaryDivider: {
-    width: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.xs,
-  },
+  summaryItem: { flex: 1, alignItems: 'center', paddingVertical: spacing.xs },
+  summaryDivider: { width: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
   summaryLabel: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    marginBottom: 2,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontSize: fontSize.xs, color: colors.textMuted, marginBottom: 2,
+    textTransform: 'uppercase', letterSpacing: 0.5,
   },
-  summaryValue: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.bold,
-    color: colors.textPrimary,
-  },
+  summaryValue: { fontSize: fontSize.sm, fontWeight: fontWeight.bold, color: colors.textPrimary },
 
-  // List
+  // Tabs
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  tab: { flex: 1, paddingVertical: spacing.sm, alignItems: 'center' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.textPrimary },
+  tabText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted },
+  tabTextActive: { color: colors.textPrimary, fontWeight: fontWeight.semibold },
+  tabSep: { width: 1, backgroundColor: colors.border, marginVertical: spacing.xs },
+
   listContent: { padding: spacing.md, paddingBottom: 80, gap: spacing.sm },
 
-  // Row
+  // Transaction row
   row: {
     backgroundColor: colors.card,
     borderRadius: radius.md,
@@ -368,81 +557,94 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   rowHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    gap: spacing.sm,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md, gap: spacing.sm,
   },
   dayBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.bg,
-    justifyContent: 'center',
-    alignItems: 'center',
+    width: 34, height: 34, borderRadius: radius.sm, borderWidth: 1,
+    borderColor: colors.border, backgroundColor: colors.bg,
+    justifyContent: 'center', alignItems: 'center',
   },
-  dayText: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
-  },
+  dayText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textPrimary },
   rowMeta: { flex: 1 },
-  rowTitle: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  rowAmount: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-  },
+  rowTitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginBottom: 2 },
+  rowAmount: { fontSize: fontSize.md, fontWeight: fontWeight.semibold },
   chevron: { fontSize: 13, color: colors.textMuted },
-
   rowBody: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+    paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.border,
   },
-  rowDesc: {
-    fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: 2,
-  },
-  rowType: {
-    fontSize: fontSize.xs,
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 2,
-  },
+  rowDesc: { fontSize: fontSize.sm, color: colors.textSecondary, lineHeight: 20, marginBottom: 2 },
+  rowType: { fontSize: fontSize.xs, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   rowDate: { fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing.sm },
   rowActions: { flexDirection: 'row', gap: spacing.sm },
   btnUpdate: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    backgroundColor: colors.card,
+    flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm,
+    paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.card,
   },
   btnUpdateText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary },
   btnDelete: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    paddingVertical: spacing.sm,
-    alignItems: 'center',
-    backgroundColor: colors.card,
+    flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm,
+    paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.card,
   },
   btnDeleteText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.expense },
+
+  // Plans
+  planRow: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  planInfo: { flex: 1 },
+  planTitle: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.textPrimary, marginBottom: 2 },
+  planAmount: { fontSize: fontSize.sm, color: colors.textMuted },
+  planActions: { flexDirection: 'row', gap: spacing.sm },
+  planBtn: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, backgroundColor: colors.bg,
+  },
+  planBtnDanger: { borderColor: colors.expense + '55' },
+  planBtnText: { fontSize: fontSize.xs, fontWeight: fontWeight.medium, color: colors.textPrimary },
+
+  planForm: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  planInput: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: fontSize.md,
+    color: colors.textPrimary,
+  },
+  planFormBtns: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
+  planFormBtn: {
+    flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm,
+    paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.bg,
+    minHeight: 40, justifyContent: 'center',
+  },
+  planFormBtnPrimary: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
+  planFormBtnPrimaryText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.surface },
+  planFormBtnText: { fontSize: fontSize.sm, color: colors.textPrimary },
+
+  addPlanBtn: {
+    borderWidth: 1, borderColor: colors.border, borderRadius: radius.md,
+    paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.card,
+  },
+  addPlanBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textPrimary },
 
   // Loading / Empty
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
@@ -451,8 +653,8 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: fontSize.md, color: colors.textSecondary, marginBottom: spacing.xs },
   emptySub: { fontSize: fontSize.sm, color: colors.textMuted },
 
-  // Tab bar
-  tabBar: {
+  // Bottom bar
+  bottomBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: colors.border,
@@ -462,8 +664,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
-  tab: { flex: 1, paddingVertical: spacing.md, alignItems: 'center' },
-  tabText: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.textMuted },
-  tabTextActive: { color: colors.textPrimary, fontWeight: fontWeight.semibold },
-  tabSep: { width: 1, backgroundColor: colors.border, marginVertical: spacing.sm },
+  bottomTab: { flex: 1, paddingVertical: spacing.md, alignItems: 'center' },
+  bottomTabText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textMuted },
+  bottomTabActive: { color: colors.textPrimary, fontWeight: fontWeight.semibold },
 });

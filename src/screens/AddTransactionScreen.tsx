@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,6 +16,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList, TransactionType } from '../types';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { addApiTransaction } from '../api';
 import { colors, spacing, fontSize, fontWeight, radius } from '../theme';
 
@@ -33,14 +34,28 @@ export default function AddTransactionScreen() {
   const route = useRoute<RouteProps>();
   const { budgetId } = route.params;
   const { credentials } = useAuth();
+  const { tags, fetchTags } = useData();
 
   const [type, setType] = useState<TransactionType>('expenses');
   const [amount, setAmount] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (credentials) {
+      fetchTags(credentials).catch(() => {});
+    }
+  }, [credentials, fetchTags]);
+
+  const toggleTag = (id: number) => {
+    setSelectedTags(prev =>
+      prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
+    );
+  };
 
   const handleAdd = async () => {
     if (!credentials) return;
@@ -56,6 +71,7 @@ export default function AddTransactionScreen() {
         type,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
       });
       navigation.goBack();
     } catch (e: any) {
@@ -69,7 +85,7 @@ export default function AddTransactionScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -138,7 +154,7 @@ export default function AddTransactionScreen() {
           style={[styles.inputField, styles.textArea]}
           value={description}
           onChangeText={setDescription}
-          placeholder="Description"
+          placeholder="Description (optional)"
           placeholderTextColor={colors.textMuted}
           multiline
           numberOfLines={4}
@@ -150,11 +166,34 @@ export default function AddTransactionScreen() {
           style={styles.inputField}
           value={date}
           onChangeText={setDate}
-          placeholder="Date  (YYYY-MM-DD)"
+          placeholder="Date (YYYY-MM-DD)"
           placeholderTextColor={colors.textMuted}
           keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
           returnKeyType="done"
         />
+
+        {/* ── Tags ── */}
+        {tags && tags.length > 0 && (
+          <View style={styles.tagsSection}>
+            <Text style={styles.tagsLabel}>Tags</Text>
+            <View style={styles.tagsList}>
+              {tags.map(tag => {
+                const selected = selectedTags.includes(tag.id);
+                return (
+                  <TouchableOpacity
+                    key={tag.id}
+                    style={[styles.tagChip, selected && styles.tagChipSelected]}
+                    onPress={() => toggleTag(tag.id)}
+                  >
+                    <Text style={[styles.tagChipText, selected && styles.tagChipTextSelected]}>
+                      {selected ? '✓ ' : ''}{tag.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
 
         {/* ── Add Button ── */}
         <TouchableOpacity
@@ -163,9 +202,9 @@ export default function AddTransactionScreen() {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator size="small" color={colors.textPrimary} />
+            <ActivityIndicator size="small" color={colors.surface} />
           ) : (
-            <Text style={styles.addBtnText}>Add</Text>
+            <Text style={styles.addBtnText}>Add Transaction</Text>
           )}
         </TouchableOpacity>
       </ScrollView>
@@ -192,23 +231,16 @@ const styles = StyleSheet.create({
   content: { padding: spacing.md, gap: spacing.sm },
 
   dropdown: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.card, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
   },
   dropdownText: { flex: 1, fontSize: fontSize.md, color: colors.textPrimary, fontWeight: fontWeight.medium },
   dropdownChevron: { fontSize: 13, color: colors.textMuted },
   dropdownMenu: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
+    backgroundColor: colors.card, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, overflow: 'hidden',
   },
   dropdownItem: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
@@ -217,28 +249,30 @@ const styles = StyleSheet.create({
   dropdownItemTextActive: { color: colors.textPrimary, fontWeight: fontWeight.semibold },
 
   inputField: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
+    backgroundColor: colors.card, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+    fontSize: fontSize.md, color: colors.textPrimary,
   },
   textArea: { minHeight: 100, textAlignVertical: 'top' },
 
-  addBtn: {
+  tagsSection: { gap: spacing.xs },
+  tagsLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
+  tagsList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  tagChip: {
+    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
+    borderRadius: radius.full, borderWidth: 1, borderColor: colors.border,
     backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-    minHeight: 48,
-    justifyContent: 'center',
+  },
+  tagChipSelected: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
+  tagChipText: { fontSize: fontSize.xs, color: colors.textSecondary },
+  tagChipTextSelected: { color: colors.surface, fontWeight: fontWeight.medium },
+
+  addBtn: {
+    backgroundColor: colors.textPrimary, borderRadius: radius.md,
+    paddingVertical: spacing.md, alignItems: 'center',
+    marginTop: spacing.sm, minHeight: 48, justifyContent: 'center',
   },
   addBtnDisabled: { opacity: 0.6 },
-  addBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textPrimary },
+  addBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.surface },
 });

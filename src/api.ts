@@ -7,7 +7,7 @@ import {
   TransactionType,
 } from './types';
 
-const BASE_URL = 'http://blogchethanspoojarycom.local/wp-json/budget-tracker/v1';
+const BASE_URL = 'https://powderblue-alligator-718865.hostingersite.com/wp-json/budget-tracker/v1';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ async function request<T>(
     try {
       const body = await res.json();
       msg = body?.message ?? msg;
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
 
@@ -80,7 +80,7 @@ export async function registerUser(
     try {
       const body = await res.json();
       msg = body?.message ?? msg;
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
 }
@@ -96,7 +96,7 @@ export async function forgotAppPassword(email: string): Promise<void> {
     try {
       const body = await res.json();
       msg = body?.message ?? msg;
-    } catch {}
+    } catch { }
     throw new Error(msg);
   }
 }
@@ -126,10 +126,10 @@ export async function deleteBudget(credentials: string, id: number): Promise<voi
 export async function getBudgetSummary(credentials: string, id: number): Promise<ApiSummary> {
   const raw = await request<any>(`${BASE_URL}/budgets/${id}/summary`, credentials);
   return {
-    income:   Number(raw?.income   ?? 0),
+    income: Number(raw?.income ?? 0),
     expenses: Number(raw?.expenses ?? 0),
-    loan:     Number(raw?.loan     ?? 0),
-    balance:  Number(raw?.balance  ?? 0),
+    loan: Number(raw?.loan ?? 0),
+    balance: Number(raw?.balance ?? 0),
   };
 }
 
