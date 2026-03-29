@@ -5,47 +5,186 @@ import React, {
   useEffect,
   ReactNode,
 } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  loadCredentials,
+  saveCredentials,
+  clearAll,
+  hasPinSetup,
+  encryptCredentials,
+  decryptCredentials,
+  clearPin,
+} from '../lib/auth';
 
-const CREDS_KEY = 'kaasu_credentials';
+// ─── Auth State Machine ───────────────────────────────────────────────────────
+// Mirrors the web app's auth flow exactly.
+
+export type AuthState =
+  | 'loading'       // checking stored credentials
+  | 'credentials'   // no credentials → show login
+  | 'register'      // show registration form
+  | 'forgot-password' // show forgot password form
+  | 'pin-setup'     // credentials valid, no PIN yet → ask user to set PIN
+  | 'pin-entry'     // PIN exists → ask for PIN to unlock
+  | 'home';         // fully authenticated
+
+interface PendingCreds {
+  encoded: string; // base64 "user:pass"
+}
 
 interface AuthContextValue {
-  credentials: string | null; // base64-encoded "user:pass"
+  authState: AuthState;
+  credentials: string | null;  // active base64 credentials (set after PIN success)
   isLoading: boolean;
-  login: (encoded: string) => Promise<void>;
+
+  // Transitions
+  goToRegister: () => void;
+  goToForgotPassword: () => void;
+  goToLogin: () => void;
+
+  /** Called after successful credential validation in LoginScreen */
+  handleCredentialLogin: (encoded: string) => Promise<void>;
+
+  /** Called after user sets a PIN on PinSetupScreen */
+  handlePinSetupComplete: (pin: string) => Promise<void>;
+
+  /** Called after user successfully enters correct PIN on PinEntryScreen */
+  handlePinSuccess: (encoded: string) => void;
+
+  /** Called when user taps "Forgot PIN" on PinEntryScreen */
+  handleForgotPin: () => void;
+
+  /** Full logout — clears all storage */
   logout: () => Promise<void>;
+
+  pendingCreds: PendingCreds | null;
 }
 
 const AuthContext = createContext<AuthContextValue>({
+  authState: 'loading',
   credentials: null,
   isLoading: true,
-  login: async () => {},
+  goToRegister: () => {},
+  goToForgotPassword: () => {},
+  goToLogin: () => {},
+  handleCredentialLogin: async () => {},
+  handlePinSetupComplete: async () => {},
+  handlePinSuccess: () => {},
+  handleForgotPin: () => {},
   logout: async () => {},
+  pendingCreds: null,
 });
 
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [authState, setAuthState] = useState<AuthState>('loading');
   const [credentials, setCredentials] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [pendingCreds, setPendingCreds] = useState<PendingCreds | null>(null);
 
-  // Load saved credentials on mount
+  // On mount, determine initial auth state
   useEffect(() => {
-    AsyncStorage.getItem(CREDS_KEY)
-      .then(stored => setCredentials(stored))
-      .finally(() => setIsLoading(false));
+    (async () => {
+      try {
+        const pinExists = await hasPinSetup();
+        if (pinExists) {
+          setAuthState('pin-entry');
+        } else {
+          const stored = await loadCredentials();
+          if (stored) {
+            // Credentials without PIN (edge case) — ask to set PIN
+            setPendingCreds({ encoded: stored });
+            setAuthState('pin-setup');
+          } else {
+            setAuthState('credentials');
+          }
+        }
+      } catch {
+        setAuthState('credentials');
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   }, []);
 
-  const login = async (encoded: string) => {
-    await AsyncStorage.setItem(CREDS_KEY, encoded);
-    setCredentials(encoded);
+  // ── Navigation helpers ──
+
+  const goToRegister = () => setAuthState('register');
+  const goToForgotPassword = () => setAuthState('forgot-password');
+  const goToLogin = () => setAuthState('credentials');
+
+  // ── Auth flow handlers ──
+
+  /**
+   * Called after LoginScreen validates credentials.
+   * Saves credentials and moves to PIN setup.
+   */
+  const handleCredentialLogin = async (encoded: string) => {
+    // If a PIN was already set (user is re-authenticating with creds), clear the old PIN
+    const pinExists = await hasPinSetup();
+    if (pinExists) await clearPin();
+
+    await saveCredentials(encoded);
+    setPendingCreds({ encoded });
+    setAuthState('pin-setup');
   };
 
+  /**
+   * Called after PinSetupScreen — encrypts (stores) credentials with PIN.
+   */
+  const handlePinSetupComplete = async (pin: string) => {
+    if (!pendingCreds) return;
+    await encryptCredentials(pin, pendingCreds.encoded);
+    setCredentials(pendingCreds.encoded);
+    setPendingCreds(null);
+    setAuthState('home');
+  };
+
+  /**
+   * Called after PinEntryScreen successfully verifies PIN.
+   * `encoded` is the decrypted credential string returned from decryptCredentials.
+   */
+  const handlePinSuccess = (encoded: string) => {
+    setCredentials(encoded);
+    setAuthState('home');
+  };
+
+  /**
+   * User forgot PIN → go back to credential screen to re-authenticate.
+   * Does NOT clear PIN yet (that happens on the next successful credential login).
+   */
+  const handleForgotPin = () => {
+    setAuthState('credentials');
+  };
+
+  /**
+   * Full logout — clears credentials and PIN from secure storage.
+   * After logout, user must log in with credentials again.
+   */
   const logout = async () => {
-    await AsyncStorage.removeItem(CREDS_KEY);
+    await clearAll();
     setCredentials(null);
+    setPendingCreds(null);
+    setAuthState('credentials');
   };
 
   return (
-    <AuthContext.Provider value={{ credentials, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        authState,
+        credentials,
+        isLoading,
+        goToRegister,
+        goToForgotPassword,
+        goToLogin,
+        handleCredentialLogin,
+        handlePinSetupComplete,
+        handlePinSuccess,
+        handleForgotPin,
+        logout,
+        pendingCreds,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

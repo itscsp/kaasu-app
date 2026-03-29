@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   StatusBar,
   KeyboardAvoidingView,
   Platform,
@@ -18,34 +17,34 @@ import { encodeCredentials, verifyCredentials } from '../api';
 import { colors, spacing, fontSize, fontWeight, radius } from '../theme';
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { handleCredentialLogin, goToRegister, goToForgotPassword } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleConnect = async () => {
     if (!username.trim() || !password.trim()) {
-      Alert.alert('Missing Fields', 'Please enter both username and application password.');
+      setError('Please enter both username and application password.');
       return;
     }
-
+    setError('');
     setLoading(true);
     try {
-      const encoded = encodeCredentials(username.trim(), password.trim());
+      const cleanPassword = password.replace(/\s/g, '');
+      const encoded = encodeCredentials(username.trim(), cleanPassword);
       const valid = await verifyCredentials(encoded);
       if (valid) {
-        await login(encoded);
+        await handleCredentialLogin(encoded);
       } else {
-        Alert.alert(
-          'Authentication Failed',
-          'Invalid username or application password. Make sure you are using a WordPress Application Password, not your login password.'
+        setError(
+          'Invalid credentials. Make sure you are using a WordPress Application Password, not your login password.'
         );
       }
     } catch (e: any) {
-      Alert.alert(
-        'Connection Error',
+      setError(
         e?.message?.includes('Network')
-          ? 'Could not reach the server. Make sure you are on the same network as your WordPress site.'
+          ? 'Could not reach the server. Make sure you are on the same network.'
           : e?.message ?? 'An unexpected error occurred.'
       );
     } finally {
@@ -55,7 +54,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="dark-content" backgroundColor={colors.bg} />
+      <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -106,28 +105,45 @@ export default function LoginScreen() {
               onSubmitEditing={handleConnect}
             />
 
+            {/* Hint */}
+            <View style={styles.hint}>
+              <Text style={styles.hintText}>💡 Get these credentials from your email</Text>
+            </View>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
             <TouchableOpacity
               style={[styles.connectBtn, loading && styles.connectBtnDisabled]}
               onPress={handleConnect}
               disabled={loading}
             >
               {loading ? (
-                <ActivityIndicator color={colors.textPrimary} size="small" />
+                <ActivityIndicator color={colors.surface} size="small" />
               ) : (
                 <Text style={styles.connectBtnText}>Connect</Text>
               )}
             </TouchableOpacity>
+
+            {/* Links to Register / Forgot */}
+            <View style={styles.linksRow}>
+              <TouchableOpacity onPress={goToRegister}>
+                <Text style={styles.linkText}>New user? Create an account</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={goToForgotPassword}>
+                <Text style={styles.linkText}>Forgot App Password?</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          {/* ── Help ── */}
+          {/* ── Help Card ── */}
           <View style={styles.helpCard}>
             <Text style={styles.helpTitle}>Where is the Application Password?</Text>
             <Text style={styles.helpText}>
-              1. Log into your WordPress dashboard{'\n'}
-              2. Go to Users → Your Profile{'\n'}
-              3. Scroll to "Application Passwords"{'\n'}
-              4. Create a new password named "Kaasu"{'\n'}
-              5. Copy and paste it above
+              {'1. Log into your WordPress dashboard\n'}
+              {'2. Go to Users → Your Profile\n'}
+              {'3. Scroll to "Application Passwords"\n'}
+              {'4. Create a new password named "Kaasu"\n'}
+              {'5. Copy and paste it above'}
             </Text>
           </View>
         </ScrollView>
@@ -138,32 +154,12 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
+  container: { padding: spacing.md, paddingTop: spacing.xl },
 
-  container: {
-    padding: spacing.md,
-    paddingTop: spacing.xl,
-  },
-
-  hero: {
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  heroIcon: {
-    fontSize: 48,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  heroTitle: {
-    fontSize: fontSize.xxl,
-    fontWeight: fontWeight.bold,
-    color: colors.textPrimary,
-    letterSpacing: 1,
-  },
-  heroSub: {
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-    marginTop: spacing.xs,
-  },
+  hero: { alignItems: 'center', marginBottom: spacing.xl },
+  heroIcon: { fontSize: 48, color: colors.textPrimary, marginBottom: spacing.sm },
+  heroTitle: { fontSize: fontSize.xxl, fontWeight: fontWeight.bold, color: colors.textPrimary, letterSpacing: 1 },
+  heroSub: { fontSize: fontSize.sm, color: colors.textMuted, marginTop: spacing.xs },
 
   card: {
     backgroundColor: colors.card,
@@ -173,25 +169,10 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     marginBottom: spacing.md,
   },
-  cardTitle: {
-    fontSize: fontSize.lg,
-    fontWeight: fontWeight.semibold,
-    color: colors.textPrimary,
-    marginBottom: spacing.sm,
-  },
-  cardDesc: {
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-    lineHeight: 20,
-    marginBottom: spacing.lg,
-  },
+  cardTitle: { fontSize: fontSize.lg, fontWeight: fontWeight.semibold, color: colors.textPrimary, marginBottom: spacing.sm },
+  cardDesc: { fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 20, marginBottom: spacing.lg },
 
-  label: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
+  label: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary, marginBottom: spacing.xs },
   input: {
     backgroundColor: colors.bg,
     borderRadius: radius.md,
@@ -204,6 +185,24 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
 
+  hint: {
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    padding: spacing.sm,
+  },
+  hintText: { fontSize: fontSize.xs, color: colors.textMuted },
+
+  errorText: {
+    marginTop: spacing.md,
+    fontSize: fontSize.sm,
+    color: '#F87171',
+    lineHeight: 20,
+  },
+
   connectBtn: {
     backgroundColor: colors.textPrimary,
     borderRadius: radius.md,
@@ -213,14 +212,11 @@ const styles = StyleSheet.create({
     minHeight: 48,
     justifyContent: 'center',
   },
-  connectBtnDisabled: {
-    opacity: 0.6,
-  },
-  connectBtnText: {
-    fontSize: fontSize.md,
-    fontWeight: fontWeight.semibold,
-    color: colors.surface,
-  },
+  connectBtnDisabled: { opacity: 0.6 },
+  connectBtnText: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.surface },
+
+  linksRow: { marginTop: spacing.lg, gap: spacing.sm, alignItems: 'center' },
+  linkText: { fontSize: fontSize.sm, color: colors.textMuted },
 
   helpCard: {
     backgroundColor: colors.card,
@@ -229,15 +225,6 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: spacing.md,
   },
-  helpTitle: {
-    fontSize: fontSize.sm,
-    fontWeight: fontWeight.semibold,
-    color: colors.textSecondary,
-    marginBottom: spacing.sm,
-  },
-  helpText: {
-    fontSize: fontSize.sm,
-    color: colors.textMuted,
-    lineHeight: 22,
-  },
+  helpTitle: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary, marginBottom: spacing.sm },
+  helpText: { fontSize: fontSize.sm, color: colors.textMuted, lineHeight: 22 },
 });
