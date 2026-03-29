@@ -7,7 +7,7 @@ import {
   TransactionType,
 } from './types';
 
-const BASE_URL = 'https://powderblue-alligator-718865.hostingersite.com/wp-json/budget-tracker/v1';
+const BASE_URL = 'https://powderblue-alligator-718865.hostingersite.com/wp-json/kaasu-wp/v1';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -32,22 +32,43 @@ async function request<T>(
   credentials: string,
   options: RequestInit = {}
 ): Promise<T> {
+  const method = options.method || 'GET';
+  console.log(`\n🚀 [API REQUEST] ${method} ${url}`);
+  if (options.body) {
+    console.log(`📦 [API PAYLOAD]:`, options.body);
+  }
+
   const res = await fetch(url, {
     ...options,
     headers: { ...headers(credentials), ...(options.headers ?? {}) },
   });
 
+  const isJson = res.headers.get('content-type')?.includes('application/json');
+
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
-      const body = await res.json();
-      msg = body?.message ?? msg;
+      const rawText = await res.text();
+      try {
+        const body = JSON.parse(rawText);
+        console.log(`❌ [API ERROR] ${res.status}:`, JSON.stringify(body, null, 2));
+        msg = body?.message ?? msg;
+      } catch {
+        console.log(`❌ [API ERROR] ${res.status}:`, rawText);
+        msg = rawText || msg;
+      }
     } catch { }
     throw new Error(msg);
   }
 
-  if (res.status === 204) return {} as T;
-  return res.json();
+  if (res.status === 204) {
+    console.log(`✅ [API SUCCESS] ${res.status} No Content`);
+    return {} as T;
+  }
+
+  const data = isJson ? await res.json() : await res.text();
+  console.log(`✅ [API SUCCESS] ${res.status}:`, JSON.stringify(data, null, 2));
+  return data as T;
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -69,24 +90,45 @@ export async function registerUser(
   _credentials: string,
   data: { name: string; phone: string; email: string }
 ): Promise<void> {
-  // Registration is unauthenticated — use empty auth or public endpoint
-  const res = await fetch(`${BASE_URL}/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify(data),
-  });
+  const url = `${BASE_URL}/auth/register`;
+  console.log(`\n🚀 [API REQUEST] POST ${url}`);
+  console.log(`📦 [API PAYLOAD]:`, JSON.stringify(data));
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(data),
+    });
+  } catch (err) {
+    console.log(`❌ [API FETCH FAILED]`, err);
+    throw err;
+  }
+
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
-      const body = await res.json();
-      msg = body?.message ?? msg;
+      const rawText = await res.text();
+      try {
+        const body = JSON.parse(rawText);
+        console.log(`❌ [API ERROR] ${res.status}:`, JSON.stringify(body, null, 2));
+        msg = body?.message ?? msg;
+      } catch {
+        console.log(`❌ [API ERROR] ${res.status}:`, rawText);
+        msg = rawText || msg;
+      }
     } catch { }
     throw new Error(msg);
   }
+  console.log(`✅ [API SUCCESS] ${res.status} User Registered`);
 }
 
 export async function forgotAppPassword(email: string): Promise<void> {
-  const res = await fetch(`${BASE_URL}/auth/forgot-app-password`, {
+  const url = `${BASE_URL}/auth/forgot-app-password`;
+  console.log(`\n🚀 [API REQUEST] POST ${url}`);
+  console.log(`📦 [API PAYLOAD]:`, JSON.stringify({ email }));
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ email }),
@@ -94,11 +136,19 @@ export async function forgotAppPassword(email: string): Promise<void> {
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
-      const body = await res.json();
-      msg = body?.message ?? msg;
+      const rawText = await res.text();
+      try {
+        const body = JSON.parse(rawText);
+        console.log(`❌ [API ERROR] ${res.status}:`, JSON.stringify(body, null, 2));
+        msg = body?.message ?? msg;
+      } catch {
+        console.log(`❌ [API ERROR] ${res.status}:`, rawText);
+        msg = rawText || msg;
+      }
     } catch { }
     throw new Error(msg);
   }
+  console.log(`✅ [API SUCCESS] ${res.status} Forgot Password Sent`);
 }
 
 // ─── Budgets ─────────────────────────────────────────────────────────────────
