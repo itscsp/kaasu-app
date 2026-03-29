@@ -132,7 +132,7 @@ export default function HomeScreen() {
           getBudgetSummary(credentials, currentBudget.id),
         ]);
 
-        setTransactions(txns);
+        setTransactions([...txns].sort((a, b) => b.date.localeCompare(a.date)));
         setSummary(sum);
       } catch (e: any) {
         Alert.alert('Error', e?.message ?? 'Failed to load data');

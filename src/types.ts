@@ -30,15 +30,27 @@ export interface ApiBudget {
 export interface ApiTag {
   id: number;
   name: string;
+  slug?: string;
+}
+
+export interface ApiPlan {
+  id: number;
+  title: string;
+  amount: number;
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
 
 export type RootStackParamList = {
+  PinEntry: undefined;
+  PinSetup: { username: string; appPassword: string };
   Login: undefined;
+  Register: undefined;
+  ForgotPassword: undefined;
   Home: undefined;
   AddTransaction: { budgetId: number };
   EditTransaction: { budgetId: number; transaction: ApiTransaction };
   Archive: undefined;
   BudgetDetail: { budgetId: number; budgetTitle: string };
+  Tags: undefined;
 };

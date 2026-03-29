@@ -1,26 +1,26 @@
 // ─── Color Palette ───────────────────────────────────────────────────────────
 export const colors = {
-  bg: '#F7F8FA',
-  surface: '#FFFFFF',
-  card: '#FFFFFF',
-  border: '#E2E5EC',
-  borderFocus: '#B0B8CC',
+  bg: '#0D0F14',
+  surface: '#13161E',
+  card: '#1A1E28',
+  border: '#252A38',
+  borderFocus: '#3A4258',
 
-  income: '#16A34A',
-  expense: '#DC2626',
-  savings: '#2563EB',
-  investment: '#D97706',
+  income: '#34D399',
+  expense: '#F87171',
+  savings: '#60A5FA',
+  investment: '#FBBF24',
 
-  textPrimary: '#111827',
-  textSecondary: '#374151',
-  textMuted: '#9CA3AF',
+  textPrimary: '#F0F2FA',
+  textSecondary: '#A0AABF',
+  textMuted: '#4E5873',
 
-  accent: '#1F2937',
+  accent: '#F0F2FA',
 
-  btnEdit: '#FFFFFF',
-  btnDelete: '#FFFFFF',
-  btnEditBorder: '#D1D5DB',
-  btnDeleteBorder: '#D1D5DB',
+  btnEdit: '#1A1E28',
+  btnDelete: '#1A1E28',
+  btnEditBorder: '#252A38',
+  btnDeleteBorder: '#252A38',
 };
 
 // ─── Spacing ─────────────────────────────────────────────────────────────────

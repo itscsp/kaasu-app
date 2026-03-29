@@ -22,8 +22,8 @@ type Nav = NativeStackNavigationProp<RootStackParamList, 'BudgetDetail'>;
 type RouteProps = RouteProp<RootStackParamList, 'BudgetDetail'>;
 
 const MONTH_NAMES = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
 function TransactionRow({ item }: { item: ApiTransaction }) {
@@ -44,9 +44,6 @@ function TransactionRow({ item }: { item: ApiTransaction }) {
           <Text style={styles.dayText}>{day}</Text>
         </View>
         <View style={styles.rowMeta}>
-          {item.title ? (
-            <Text style={styles.rowTitle} numberOfLines={1}>{item.title}</Text>
-          ) : null}
           <Text style={[styles.rowAmount, { color: amtColor }]}>
             {sign} ₹{item.amount.toLocaleString()}
           </Text>
@@ -55,6 +52,9 @@ function TransactionRow({ item }: { item: ApiTransaction }) {
       </View>
       {expanded && (
         <View style={styles.rowBody}>
+          {item.title ? (
+            <Text style={styles.rowTitle} numberOfLines={1}>{item.title}</Text>
+          ) : null}
           {item.description ? (
             <Text style={styles.rowDesc}>{item.description}</Text>
           ) : null}
@@ -87,7 +87,7 @@ export default function BudgetDetailScreen() {
         getTransactions(credentials, budgetId),
         getBudgetSummary(credentials, budgetId),
       ]);
-      setTransactions(txns);
+      setTransactions([...txns].sort((a, b) => b.date.localeCompare(a.date)));
       setSummary(sum);
     } catch (e: any) {
       Alert.alert('Error', e?.message ?? 'Failed to load budget');
