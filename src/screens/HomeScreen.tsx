@@ -489,6 +489,13 @@ export default function HomeScreen() {
         <View style={styles.tabSep} />
         <TouchableOpacity
           style={styles.bottomTab}
+          onPress={() => navigation.navigate('Accounts')}
+        >
+          <Text style={styles.bottomTabText}>Accounts</Text>
+        </TouchableOpacity>
+        <View style={styles.tabSep} />
+        <TouchableOpacity
+          style={styles.bottomTab}
           onPress={() => navigation.navigate('Tags')}
         >
           <Text style={styles.bottomTabText}>Tags</Text>

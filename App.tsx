@@ -21,6 +21,8 @@ import EditTransactionScreen from './src/screens/EditTransactionScreen';
 import ArchiveScreen from './src/screens/ArchiveScreen';
 import BudgetDetailScreen from './src/screens/BudgetDetailScreen';
 import TagsScreen from './src/screens/TagsScreen';
+import AccountsScreen from './src/screens/AccountsScreen';
+import AccountDetailScreen from './src/screens/AccountDetailScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -67,6 +69,8 @@ function Navigator() {
           <Stack.Screen name="Archive" component={ArchiveScreen} />
           <Stack.Screen name="BudgetDetail" component={BudgetDetailScreen} />
           <Stack.Screen name="Tags" component={TagsScreen} />
+          <Stack.Screen name="Accounts" component={AccountsScreen} />
+          <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
         </>
       )}
     </Stack.Navigator>

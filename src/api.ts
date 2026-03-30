@@ -4,6 +4,8 @@ import {
   ApiSummary,
   ApiTag,
   ApiPlan,
+  ApiAccount,
+  TagStatus,
   TransactionType,
 } from './types';
 
@@ -206,7 +208,9 @@ export async function addApiTransaction(
     type: TransactionType;
     title?: string;
     description?: string;
+    notes?: string;
     tags?: number[];
+    account_id?: number;
   }
 ): Promise<ApiTransaction> {
   return request<ApiTransaction>(
@@ -226,7 +230,9 @@ export async function updateApiTransaction(
     type: TransactionType;
     title: string;
     description: string;
+    notes: string;
     tags: number[];
+    account_id: number;
   }>
 ): Promise<ApiTransaction> {
   return request<ApiTransaction>(
@@ -257,7 +263,18 @@ export async function getTags(credentials: string): Promise<ApiTag[]> {
 export async function createTag(credentials: string, name: string): Promise<ApiTag> {
   return request<ApiTag>(`${BASE_URL}/tags`, credentials, {
     method: 'POST',
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, status: 'PENDING' }),
+  });
+}
+
+export async function updateTag(
+  credentials: string,
+  id: number,
+  data: { status: 'DONE' | 'PENDING' }
+): Promise<ApiTag> {
+  return request<ApiTag>(`${BASE_URL}/tags/${id}`, credentials, {
+    method: 'PUT',
+    body: JSON.stringify(data),
   });
 }
 
@@ -305,4 +322,40 @@ export async function deletePlan(
     credentials,
     { method: 'DELETE' }
   );
+}
+
+// ─── Accounts ─────────────────────────────────────────────────────────────────
+
+export async function getAccounts(credentials: string): Promise<ApiAccount[]> {
+  const raw = await request<any[]>(`${BASE_URL}/accounts`, credentials);
+  return Array.isArray(raw)
+    ? raw.map(a => ({
+        ...a,
+        balance: Number(a?.balance ?? 0),
+        is_connected: Boolean(a?.is_connected),
+        transaction_count: Number(a?.transaction_count ?? 0),
+      }))
+    : [];
+}
+
+export async function createAccount(
+  credentials: string,
+  data: { name: string; type: string; balance?: number }
+): Promise<ApiAccount> {
+  return request<ApiAccount>(`${BASE_URL}/accounts`, credentials, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteAccount(credentials: string, id: number): Promise<void> {
+  await request<{}>(`${BASE_URL}/accounts/${id}`, credentials, { method: 'DELETE' });
+}
+
+export async function getAccountTransactions(
+  credentials: string,
+  accountId: number
+): Promise<ApiTransaction[]> {
+  const raw = await request<any[]>(`${BASE_URL}/accounts/${accountId}/transactions`, credentials);
+  return Array.isArray(raw) ? raw.map(normalizeTransaction) : [];
 }

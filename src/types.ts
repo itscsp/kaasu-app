@@ -2,6 +2,8 @@
 
 export type TransactionType = 'income' | 'expenses' | 'loan';
 
+export type TagStatus = 'DONE' | 'PENDING';
+
 export interface ApiTransaction {
   id: number;
   date: string;
@@ -9,7 +11,9 @@ export interface ApiTransaction {
   type: TransactionType;
   title?: string;
   description?: string;
+  notes?: string;
   tags?: number[];
+  account_id?: number;
 }
 
 export interface ApiSummary {
@@ -31,12 +35,24 @@ export interface ApiTag {
   id: number;
   name: string;
   slug?: string;
+  status?: TagStatus;
 }
 
 export interface ApiPlan {
   id: number;
   title: string;
   amount: number;
+}
+
+export type AccountType = 'bank' | 'cash' | 'loan' | 'investment' | 'other';
+
+export interface ApiAccount {
+  id: number;
+  name: string;
+  type: AccountType;
+  balance: number;
+  is_connected: boolean;
+  transaction_count: number;
 }
 
 // ─── Navigation ──────────────────────────────────────────────────────────────
@@ -53,4 +69,6 @@ export type RootStackParamList = {
   Archive: undefined;
   BudgetDetail: { budgetId: number; budgetTitle: string };
   Tags: undefined;
+  Accounts: undefined;
+  AccountDetail: { accountId: number; accountName: string };
 };

@@ -14,8 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { createTag, deleteTag } from '../api';
-import { ApiTag } from '../types';
+import { createTag, deleteTag, updateTag } from '../api';
+import { ApiTag, TagStatus } from '../types';
 import { colors, spacing, fontSize, fontWeight, radius } from '../theme';
 
 export default function TagsScreen() {
@@ -26,6 +26,7 @@ export default function TagsScreen() {
   const [newTagName, setNewTagName] = useState('');
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function TagsScreen() {
     if (!newTagName.trim() || !credentials) return;
     setCreating(true);
     try {
+      // createTag now sends { name, status: 'PENDING' } automatically
       await createTag(credentials, newTagName.trim());
       setNewTagName('');
       invalidateTags();
@@ -49,6 +51,21 @@ export default function TagsScreen() {
       setError('Failed to create tag');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleToggleStatus = async (tag: ApiTag) => {
+    if (!credentials) return;
+    const newStatus: TagStatus = (tag.status ?? 'PENDING') === 'DONE' ? 'PENDING' : 'DONE';
+    setTogglingId(tag.id);
+    try {
+      await updateTag(credentials, tag.id, { status: newStatus });
+      invalidateTags();
+      await fetchTags(credentials, true);
+    } catch {
+      setError('Failed to update tag status');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -70,6 +87,50 @@ export default function TagsScreen() {
         },
       },
     ]);
+  };
+
+  const renderTag = ({ item }: { item: ApiTag }) => {
+    const status = item.status ?? 'PENDING';
+    const isDone = status === 'DONE';
+    const isToggling = togglingId === item.id;
+
+    return (
+      <View style={styles.tagRow}>
+        {/* Status toggle */}
+        <TouchableOpacity
+          onPress={() => handleToggleStatus(item)}
+          disabled={isToggling}
+          style={[styles.statusBtn, isDone ? styles.statusBtnDone : styles.statusBtnPending]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          {isToggling ? (
+            <ActivityIndicator size="small" color={isDone ? colors.income : colors.investment} />
+          ) : (
+            <Text style={[styles.statusBtnText, isDone ? styles.statusTextDone : styles.statusTextPending]}>
+              {isDone ? '✓' : '◷'}
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Tag name + badge */}
+        <View style={styles.tagMeta}>
+          <Text style={styles.tagName}>{item.name}</Text>
+          <View style={[styles.statusBadge, isDone ? styles.badgeDone : styles.badgePending]}>
+            <Text style={[styles.badgeText, isDone ? styles.badgeTextDone : styles.badgeTextPending]}>
+              {status}
+            </Text>
+          </View>
+        </View>
+
+        {/* Delete */}
+        <TouchableOpacity
+          onPress={() => handleDelete(item)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.deleteBtn}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
@@ -126,14 +187,7 @@ export default function TagsScreen() {
           ListEmptyComponent={
             <Text style={styles.emptyText}>No tags yet. Create one above.</Text>
           }
-          renderItem={({ item }) => (
-            <View style={styles.tagRow}>
-              <Text style={styles.tagName}>{item.name}</Text>
-              <TouchableOpacity onPress={() => handleDelete(item)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Text style={styles.deleteBtn}>✕</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+          renderItem={renderTag}
         />
       )}
     </SafeAreaView>
@@ -185,25 +239,53 @@ const styles = StyleSheet.create({
   addBtnDisabled: { opacity: 0.5 },
   addBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.semibold, color: colors.surface },
 
-  errorText: {
-    margin: spacing.md,
-    fontSize: fontSize.sm,
-    color: '#F87171',
-  },
+  errorText: { margin: spacing.md, fontSize: fontSize.sm, color: '#F87171' },
 
   list: { padding: spacing.md, gap: spacing.sm },
+
   tagRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: colors.card,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
+
+  // Status toggle button
+  statusBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusBtnDone: { borderColor: colors.income, backgroundColor: colors.income + '22' },
+  statusBtnPending: { borderColor: colors.investment, backgroundColor: colors.investment + '22' },
+  statusBtnText: { fontSize: fontSize.sm, fontWeight: fontWeight.bold },
+  statusTextDone: { color: colors.income },
+  statusTextPending: { color: colors.investment },
+
+  // Tag meta
+  tagMeta: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
   tagName: { fontSize: fontSize.md, fontWeight: fontWeight.medium, color: colors.textPrimary },
+
+  // Status badge
+  statusBadge: {
+    borderRadius: radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  badgeDone: { backgroundColor: colors.income + '22' },
+  badgePending: { backgroundColor: colors.investment + '22' },
+  badgeText: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.5 },
+  badgeTextDone: { color: colors.income },
+  badgeTextPending: { color: colors.investment },
+
   deleteBtn: { fontSize: fontSize.sm, color: colors.textMuted },
 
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
