@@ -306,7 +306,11 @@ export default function HomeScreen() {
 
       {/* ── Summary ── */}
       {summary && (
-        <View style={styles.summaryRow}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => budget && navigation.navigate('Summary', { budgetId: budget.id, monthLabel: currentMonthLabel })}
+          style={styles.summaryRow}
+        >
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Income</Text>
             <Text style={[styles.summaryValue, { color: colors.income }]}>
@@ -332,7 +336,7 @@ export default function HomeScreen() {
               ₹{Math.abs(summary.balance ?? 0).toLocaleString()}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
       )}
 
       {/* ── Tab Bar ── */}

@@ -13,8 +13,9 @@ import {
   getTransactions,
   getTags,
   getPlans,
+  getAccounts,
 } from '../api';
-import { ApiBudget, ApiSummary, ApiTag, ApiPlan, ApiTransaction } from '../types';
+import { ApiBudget, ApiSummary, ApiTag, ApiPlan, ApiTransaction, ApiAccount } from '../types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,14 +30,17 @@ interface DataContextType {
   tags: ApiTag[] | null;
   budgetDetails: Record<number, BudgetDetails>;
   plans: Record<number, ApiPlan[]>;
+  accounts: ApiAccount[] | null;
 
   fetchBudgets: (credentials: string, force?: boolean) => Promise<void>;
   fetchTags: (credentials: string, force?: boolean) => Promise<void>;
+  fetchAccounts: (credentials: string, force?: boolean) => Promise<void>;
   fetchBudgetDetails: (credentials: string, budgetId: number, force?: boolean) => Promise<void>;
   fetchPlans: (credentials: string, budgetId: number, force?: boolean) => Promise<void>;
 
   invalidateBudgets: () => void;
   invalidateTags: () => void;
+  invalidateAccounts: () => void;
   invalidateBudgetDetails: (budgetId: number) => void;
   invalidatePlans: (budgetId: number) => void;
   clearCache: () => void;
@@ -49,11 +53,13 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export function DataProvider({ children }: { children: ReactNode }) {
   const [budgets, setBudgets] = useState<ApiBudget[] | null>(null);
   const [tags, setTags] = useState<ApiTag[] | null>(null);
+  const [accounts, setAccounts] = useState<ApiAccount[] | null>(null);
   const [budgetDetails, setBudgetDetails] = useState<Record<number, BudgetDetails>>({});
   const [plans, setPlans] = useState<Record<number, ApiPlan[]>>({});
 
   const fetchedBudgets = useRef(false);
   const fetchedTags = useRef(false);
+  const fetchedAccounts = useRef(false);
   const fetchedBudgetDetails = useRef<Set<number>>(new Set());
   const fetchedPlans = useRef<Set<number>>(new Set());
 
@@ -77,6 +83,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setTags(data);
     } catch (e) {
       fetchedTags.current = false;
+      throw e;
+    }
+  }, []);
+
+  const fetchAccounts = useCallback(async (credentials: string, force = false) => {
+    if (!force && fetchedAccounts.current) return;
+    fetchedAccounts.current = true;
+    try {
+      const data = await getAccounts(credentials);
+      setAccounts(data);
+    } catch (e) {
+      fetchedAccounts.current = false;
       throw e;
     }
   }, []);
@@ -126,6 +144,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     fetchedTags.current = false;
   }, []);
 
+  const invalidateAccounts = useCallback(() => {
+    fetchedAccounts.current = false;
+  }, []);
+
   const invalidateBudgetDetails = useCallback((budgetId: number) => {
     fetchedBudgetDetails.current.delete(budgetId);
   }, []);
@@ -137,10 +159,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const clearCache = useCallback(() => {
     fetchedBudgets.current = false;
     fetchedTags.current = false;
+    fetchedAccounts.current = false;
     fetchedBudgetDetails.current.clear();
     fetchedPlans.current.clear();
     setBudgets(null);
     setTags(null);
+    setAccounts(null);
     setBudgetDetails({});
     setPlans({});
   }, []);
@@ -150,14 +174,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
       value={{
         budgets,
         tags,
+        accounts,
         budgetDetails,
         plans,
         fetchBudgets,
         fetchTags,
+        fetchAccounts,
         fetchBudgetDetails,
         fetchPlans,
         invalidateBudgets,
         invalidateTags,
+        invalidateAccounts,
         invalidateBudgetDetails,
         invalidatePlans,
         clearCache,

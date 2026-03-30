@@ -21,6 +21,7 @@ export interface ApiSummary {
   expenses: number;
   loan: number;
   balance: number;
+  accounts?: ApiAccount[];
 }
 
 export interface ApiBudget {
@@ -71,4 +72,5 @@ export type RootStackParamList = {
   Tags: undefined;
   Accounts: undefined;
   AccountDetail: { accountId: number; accountName: string };
+  Summary: { budgetId: number; monthLabel: string };
 };

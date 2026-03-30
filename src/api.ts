@@ -182,6 +182,14 @@ export async function getBudgetSummary(credentials: string, id: number): Promise
     expenses: Number(raw?.expenses ?? 0),
     loan: Number(raw?.loan ?? 0),
     balance: Number(raw?.balance ?? 0),
+    accounts: Array.isArray(raw?.accounts)
+      ? raw.accounts.map((a: any) => ({
+          ...a,
+          balance: Number(a?.balance ?? a?.amount ?? 0),
+          is_connected: Boolean(a?.is_connected),
+          transaction_count: Number(a?.transaction_count ?? 0),
+        }))
+      : undefined,
   };
 }
 

@@ -23,6 +23,7 @@ import BudgetDetailScreen from './src/screens/BudgetDetailScreen';
 import TagsScreen from './src/screens/TagsScreen';
 import AccountsScreen from './src/screens/AccountsScreen';
 import AccountDetailScreen from './src/screens/AccountDetailScreen';
+import SummaryScreen from './src/screens/SummaryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -71,6 +72,7 @@ function Navigator() {
           <Stack.Screen name="Tags" component={TagsScreen} />
           <Stack.Screen name="Accounts" component={AccountsScreen} />
           <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
+          <Stack.Screen name="Summary" component={SummaryScreen} />
         </>
       )}
     </Stack.Navigator>

@@ -34,7 +34,7 @@ export default function EditTransactionScreen() {
   const route = useRoute<RouteProps>();
   const { budgetId, transaction } = route.params;
   const { credentials } = useAuth();
-  const { tags, fetchTags } = useData();
+  const { tags, fetchTags, accounts, fetchAccounts } = useData();
 
   const [type, setType] = useState<TransactionType>(transaction.type);
   const [amount, setAmount] = useState(String(transaction.amount));
@@ -42,14 +42,16 @@ export default function EditTransactionScreen() {
   const [description, setDescription] = useState(transaction.description ?? '');
   const [date, setDate] = useState(transaction.date);
   const [selectedTags, setSelectedTags] = useState<number[]>(transaction.tags ?? []);
+  const [accountId, setAccountId] = useState<number | null>(transaction.account_id ?? null);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (credentials) {
       fetchTags(credentials).catch(() => {});
+      fetchAccounts(credentials).catch(() => {});
     }
-  }, [credentials, fetchTags]);
+  }, [credentials, fetchTags, fetchAccounts]);
 
   const toggleTag = (id: number) => {
     setSelectedTags(prev =>
@@ -72,6 +74,7 @@ export default function EditTransactionScreen() {
         title: title.trim() || undefined,
         description: description.trim() || undefined,
         tags: selectedTags.length > 0 ? selectedTags : undefined,
+        account_id: accountId || undefined,
       });
       navigation.goBack();
     } catch (e: any) {
@@ -174,6 +177,33 @@ export default function EditTransactionScreen() {
           keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
           returnKeyType="done"
         />
+
+        {/* ── Accounts ── */}
+        {accounts && accounts.length > 0 && (
+          <View style={styles.tagsSection}>
+            <Text style={styles.tagsLabel}>Account</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagsList}
+            >
+              {accounts.map(acc => {
+                const selected = accountId === acc.id;
+                return (
+                  <TouchableOpacity
+                    key={acc.id}
+                    style={[styles.tagChip, selected && styles.tagChipSelected]}
+                    onPress={() => setAccountId(selected ? null : acc.id)}
+                  >
+                    <Text style={[styles.tagChipText, selected && styles.tagChipTextSelected]}>
+                      {acc.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* ── Tags ── */}
         {tags && tags.length > 0 && (
