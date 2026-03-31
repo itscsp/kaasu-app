@@ -3,6 +3,7 @@
     "name": "kaasu",
     "slug": "kaasu",
     "version": "1.0.0",
+    "scheme": "kaasu",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -35,6 +36,7 @@
       "expo-secure-store"
     ],
     "extra": {
+      "googleWebClientId": "80776779534-v95emk3cc2ghm3kdvngjpg0edk5d0u33.apps.googleusercontent.com",
       "eas": {
         "projectId": "82b2dc8e-6210-4979-b27f-d1b6080192e3"
       }

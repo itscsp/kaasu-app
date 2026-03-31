@@ -13,9 +13,15 @@ const BASE_URL = 'https://powderblue-alligator-718865.hostingersite.com/wp-json/
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+function buildAuthHeader(credentials: string): string {
+  // Google ID tokens are JWTs: three base64url segments separated by dots
+  const isJWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(credentials);
+  return isJWT ? `Bearer ${credentials}` : `Basic ${credentials}`;
+}
+
 function headers(credentials: string) {
   return {
-    Authorization: `Basic ${credentials}`,
+    Authorization: buildAuthHeader(credentials),
     'Content-Type': 'application/json',
     Accept: 'application/json',
   };
@@ -91,6 +97,31 @@ async function request<T>(
 export function encodeCredentials(username: string, password: string): string {
   return btoa(`${username}:${password}`);
 }
+
+export async function googleSignIn(
+  idToken: string
+): Promise<{ success: boolean; user?: { name: string; email: string } }> {
+  const url = `${BASE_URL}/auth/google`;
+  console.log(`\n🚀 [API REQUEST] POST ${url}`);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ token: idToken }),
+  });
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const text = await res.text();
+      try { msg = JSON.parse(text)?.message ?? msg; } catch { msg = text || msg; }
+    } catch {}
+    console.log(`❌ [GOOGLE AUTH ERROR] ${res.status}: ${msg}`);
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  console.log(`✅ [GOOGLE AUTH SUCCESS]:`, JSON.stringify(data));
+  return data;
+}
+
 
 export async function verifyCredentials(credentials: string): Promise<boolean> {
   try {

@@ -14,6 +14,7 @@ import {
   decryptCredentials,
   clearPin,
 } from '../lib/auth';
+import { googleSignIn } from '../api';
 
 // ─── Auth State Machine ───────────────────────────────────────────────────────
 // Mirrors the web app's auth flow exactly.
@@ -44,6 +45,9 @@ interface AuthContextValue {
   /** Called after successful credential validation in LoginScreen */
   handleCredentialLogin: (encoded: string) => Promise<void>;
 
+  /** Called after successful Google Sign-In — verifies with backend then proceeds to PIN setup */
+  handleGoogleLogin: (idToken: string) => Promise<void>;
+
   /** Called after user sets a PIN on PinSetupScreen */
   handlePinSetupComplete: (pin: string) => Promise<void>;
 
@@ -57,6 +61,8 @@ interface AuthContextValue {
   logout: () => Promise<void>;
 
   pendingCreds: PendingCreds | null;
+  googleLoading: boolean;
+  googleError: string;
 }
 
 const AuthContext = createContext<AuthContextValue>({
@@ -67,11 +73,14 @@ const AuthContext = createContext<AuthContextValue>({
   goToForgotPassword: () => {},
   goToLogin: () => {},
   handleCredentialLogin: async () => {},
+  handleGoogleLogin: async () => {},
   handlePinSetupComplete: async () => {},
   handlePinSuccess: () => {},
   handleForgotPin: () => {},
   logout: async () => {},
   pendingCreds: null,
+  googleLoading: false,
+  googleError: '',
 });
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
@@ -81,6 +90,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [credentials, setCredentials] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [pendingCreds, setPendingCreds] = useState<PendingCreds | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState('');
 
   // On mount, determine initial auth state
   useEffect(() => {
@@ -127,6 +138,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await saveCredentials(encoded);
     setPendingCreds({ encoded });
     setAuthState('pin-setup');
+  };
+
+  /**
+   * Called after LoginScreen receives a Google ID token.
+   * Verifies token with backend → stores token → proceeds to PIN setup.
+   */
+  const handleGoogleLogin = async (idToken: string) => {
+    setGoogleLoading(true);
+    setGoogleError('');
+    try {
+      const res = await googleSignIn(idToken);
+      if (!res.success) {
+        setGoogleError('Google sign-in failed. Please try again.');
+        return;
+      }
+      // Use the Google ID token directly as credentials (Bearer auth)
+      const pinExists = await hasPinSetup();
+      if (pinExists) await clearPin();
+      await saveCredentials(idToken);
+      setPendingCreds({ encoded: idToken });
+      setAuthState('pin-setup');
+    } catch (e: any) {
+      setGoogleError(e?.message ?? 'Failed to sign in with Google.');
+    } finally {
+      setGoogleLoading(false);
+    }
   };
 
   /**
@@ -178,11 +215,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         goToForgotPassword,
         goToLogin,
         handleCredentialLogin,
+        handleGoogleLogin,
         handlePinSetupComplete,
         handlePinSuccess,
         handleForgotPin,
         logout,
         pendingCreds,
+        googleLoading,
+        googleError,
       }}
     >
       {children}
