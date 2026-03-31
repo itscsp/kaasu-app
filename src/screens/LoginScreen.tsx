@@ -10,7 +10,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
+
+// Logo — save the logo image as assets/logo.png
+let logoSource: any;
+try { logoSource = require('../../assets/logo.png'); } catch { logoSource = null; }
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -41,9 +46,10 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [showManual, setShowManual] = useState(false);
 
-  // ── Google OAuth ──────────────────────────────────────────────────────────
   const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: GOOGLE_WEB_CLIENT_ID,
+    iosClientId: GOOGLE_WEB_CLIENT_ID,
+    androidClientId: GOOGLE_WEB_CLIENT_ID,
     scopes: ['openid', 'profile', 'email'],
   });
 
@@ -105,10 +111,20 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* ── Logo / Title ── */}
+          {/* ── Logo ── */}
           <View style={styles.hero}>
-            <Text style={styles.heroIcon}>₹</Text>
-            <Text style={styles.heroTitle}>Kaasu</Text>
+            {logoSource ? (
+              <Image
+                source={logoSource}
+                style={styles.logoImage}
+                resizeMode="contain"
+              />
+            ) : (
+              <>
+                <Text style={styles.heroIcon}>₹</Text>
+                <Text style={styles.heroTitle}>Kaasu</Text>
+              </>
+            )}
             <Text style={styles.heroSub}>Budget Tracker</Text>
           </View>
 
@@ -244,6 +260,12 @@ const styles = StyleSheet.create({
   container: { padding: spacing.md, paddingTop: spacing.xl, paddingBottom: spacing.xl },
 
   hero: { alignItems: 'center', marginBottom: spacing.xl },
+  logoImage: {
+    width: 200,
+    height: 80,
+    marginBottom: spacing.sm,
+    tintColor: colors.textPrimary,
+  },
   heroIcon: { fontSize: 52, color: colors.textPrimary, marginBottom: spacing.sm },
   heroTitle: {
     fontSize: fontSize.xxl,
