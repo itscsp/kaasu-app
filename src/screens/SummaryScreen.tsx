@@ -89,13 +89,13 @@ export default function SummaryScreen() {
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Total Income</Text>
                 <Text style={[styles.statValue, { color: colors.income }]}>
-                  ₹{Number(summary.income ?? 0).toLocaleString()}
+                  ₹{Number(summary.total_income ?? 0).toLocaleString()}
                 </Text>
               </View>
               <View style={styles.statRow}>
                 <Text style={styles.statLabel}>Total Expenses</Text>
                 <Text style={[styles.statValue, { color: colors.expense }]}>
-                  ₹{Number(summary.expenses ?? 0).toLocaleString()}
+                  ₹{Number(summary.total_expenses ?? 0).toLocaleString()}
                 </Text>
               </View>
               <View style={styles.statDivider} />
@@ -105,9 +105,9 @@ export default function SummaryScreen() {
                 </Text>
                 <Text style={[
                   styles.statValue,
-                  { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: (summary.balance ?? 0) >= 0 ? colors.income : colors.expense }
+                  { fontSize: fontSize.lg, fontWeight: fontWeight.bold, color: (summary.net_balance ?? 0) >= 0 ? colors.income : colors.expense }
                 ]}>
-                  ₹{Math.abs(summary.balance ?? 0).toLocaleString()}
+                  ₹{Math.abs(summary.net_balance ?? 0).toLocaleString()}
                 </Text>
               </View>
             </View>
@@ -117,20 +117,23 @@ export default function SummaryScreen() {
               <View style={styles.accountsSection}>
                 <Text style={styles.sectionLabel}>Account Balances</Text>
                 <View style={styles.accountsList}>
-                  {summary.accounts.map(acc => (
-                    <View key={acc.id} style={styles.accountRow}>
-                      <View style={styles.accountInfo}>
-                        <Text style={styles.accountName}>{acc.name}</Text>
-                        <Text style={styles.accountGroup}>{acc.type}</Text>
+                  {summary.accounts.map(acc => {
+                    const balance = Number(acc.balance ?? acc.amount ?? 0);
+                    return (
+                      <View key={acc.id} style={styles.accountRow}>
+                        <View style={styles.accountInfo}>
+                          <Text style={styles.accountName}>{acc.name}</Text>
+                          <Text style={styles.accountGroup}>{acc.group ?? acc.type}</Text>
+                        </View>
+                        <Text style={[
+                          styles.accountBalance,
+                          { color: balance >= 0 ? colors.income : colors.expense }
+                        ]}>
+                          ₹{Math.abs(balance).toLocaleString()}
+                        </Text>
                       </View>
-                      <Text style={[
-                        styles.accountBalance,
-                        { color: (acc.balance ?? 0) >= 0 ? colors.income : colors.expense }
-                      ]}>
-                        ₹{Number(acc.balance ?? 0).toLocaleString()}
-                      </Text>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               </View>
             )}

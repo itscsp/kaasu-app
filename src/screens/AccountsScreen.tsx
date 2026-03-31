@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,88 +16,95 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { getAccounts, createAccount, deleteAccount } from '../api';
-import { ApiAccount, AccountType, RootStackParamList } from '../types';
+import { getAccounts, createAccount, updateAccount, deleteAccount } from '../api';
+import { ApiAccount, AccountGroup, RootStackParamList } from '../types';
 import { colors, spacing, fontSize, fontWeight, radius } from '../theme';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Accounts'>;
 
-const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
-  bank: 'Bank',
-  cash: 'Cash',
-  loan: 'Loan',
-  investment: 'Investment',
-  other: 'Other',
+const ACCOUNT_GROUP_LABELS: Record<AccountGroup, string> = {
+  Cash: 'Cash',
+  Accounts: 'Bank / Accounts',
+  Investment: 'Investment',
+  Loan: 'Loan',
+  Insurance: 'Insurance',
+  Saving: 'Saving',
 };
 
-const ACCOUNT_TYPES: AccountType[] = ['bank', 'cash', 'loan', 'investment', 'other'];
+const ACCOUNT_GROUPS: AccountGroup[] = ['Cash', 'Accounts', 'Investment', 'Loan', 'Insurance', 'Saving'];
 
-const TYPE_COLORS: Record<AccountType, string> = {
-  bank: '#60A5FA',
-  cash: '#34D399',
-  loan: '#F87171',
-  investment: '#FBBF24',
-  other: '#A78BFA',
+const GROUP_COLORS: Record<AccountGroup, string> = {
+  Cash: '#34D399',
+  Accounts: '#60A5FA',
+  Investment: '#FBBF24',
+  Loan: '#F87171',
+  Insurance: '#A78BFA',
+  Saving: '#2DD4BF',
 };
 
 function AccountRow({
   account,
   onDelete,
+  onEdit,
   onPress,
 }: {
   account: ApiAccount;
   onDelete: () => void;
+  onEdit: () => void;
   onPress: () => void;
 }) {
-  const typeColor = TYPE_COLORS[account.type] ?? colors.textMuted;
-  const typeLabel = ACCOUNT_TYPE_LABELS[account.type] ?? account.type;
-  const balanceColor = account.balance >= 0 ? colors.income : colors.expense;
+  const group = (account.group ?? account.type) as AccountGroup;
+  const groupColor = GROUP_COLORS[group] ?? colors.textMuted;
+  const groupLabel = ACCOUNT_GROUP_LABELS[group] ?? group;
+  const balance = Number(account.balance ?? account.amount ?? 0);
+  const balanceColor = balance >= 0 ? colors.income : colors.expense;
 
   return (
     <TouchableOpacity activeOpacity={0.75} onPress={onPress} style={styles.row}>
-      {/* Left accent bar */}
-      <View style={[styles.rowAccent, { backgroundColor: typeColor }]} />
-
+      <View style={[styles.rowAccent, { backgroundColor: groupColor }]} />
       <View style={styles.rowContent}>
-        {/* Top row: name + balance */}
         <View style={styles.rowTop}>
           <Text style={styles.accountName} numberOfLines={1}>{account.name}</Text>
           <Text style={[styles.accountBalance, { color: balanceColor }]}>
-            ₹{Math.abs(account.balance).toLocaleString()}
+            ₹{Math.abs(balance).toLocaleString()}
           </Text>
         </View>
-
-        {/* Bottom row: type badge + linked badge */}
         <View style={styles.rowBottom}>
-          <View style={[styles.typeBadge, { backgroundColor: typeColor + '22', borderColor: typeColor + '44' }]}>
-            <Text style={[styles.typeBadgeText, { color: typeColor }]}>{typeLabel}</Text>
+          <View style={[styles.typeBadge, { backgroundColor: groupColor + '22', borderColor: groupColor + '44' }]}>
+            <Text style={[styles.typeBadgeText, { color: groupColor }]}>{groupLabel}</Text>
           </View>
-
+          {account.description ? (
+            <Text style={styles.accountDesc} numberOfLines={1}>{account.description}</Text>
+          ) : null}
           {account.is_connected && (
             <View style={styles.linkedBadge}>
               <Text style={styles.linkedBadgeText}>
-                🔗 Linked to {account.transaction_count} txn{account.transaction_count !== 1 ? 's' : ''}
+                🔗 {account.transaction_count} txn{account.transaction_count !== 1 ? 's' : ''}
               </Text>
             </View>
           )}
         </View>
       </View>
-
-      {/* Delete button — disabled if connected */}
-      {account.is_connected ? (
-        <View style={styles.deleteDisabled}>
-          <Text style={styles.deleteDisabledText}>🔒</Text>
-        </View>
-      ) : (
-        <TouchableOpacity
-          onPress={onDelete}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={styles.deleteBtn}
-        >
-          <Text style={styles.deleteBtnText}>✕</Text>
+      <View style={styles.rowActions}>
+        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={styles.editBtn}>
+          <Text style={styles.editBtnText}>✏</Text>
         </TouchableOpacity>
-      )}
+        {account.is_connected ? (
+          <View style={styles.deleteDisabled}>
+            <Text style={styles.deleteDisabledText}>🔒</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={onDelete}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            style={styles.deleteBtn}
+          >
+            <Text style={styles.deleteBtnText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -111,11 +118,13 @@ export default function AccountsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  // Add form state
+  // Form state
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [formName, setFormName] = useState('');
-  const [formType, setFormType] = useState<AccountType>('bank');
+  const [formGroup, setFormGroup] = useState<AccountGroup>('Accounts');
   const [formBalance, setFormBalance] = useState('');
+  const [formDescription, setFormDescription] = useState('');
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async (isRefresh = false) => {
@@ -154,22 +163,38 @@ export default function AccountsScreen() {
     ]);
   };
 
-  const handleCreate = async () => {
+  const startEdit = (account: ApiAccount) => {
+    setEditingId(account.id);
+    setFormName(account.name);
+    setFormGroup((account.group ?? account.type) as AccountGroup);
+    setFormBalance(String(account.balance ?? account.amount ?? 0));
+    setFormDescription(account.description ?? '');
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
     if (!formName.trim() || !credentials) return;
     setSaving(true);
     try {
-      await createAccount(credentials, {
-        name: formName.trim(),
-        type: formType,
-        balance: formBalance ? Number(formBalance) : 0,
-      });
-      setFormName('');
-      setFormBalance('');
-      setFormType('bank');
-      setShowForm(false);
+      if (editingId) {
+        await updateAccount(credentials, editingId, {
+          name: formName.trim(),
+          group: formGroup,
+          amount: formBalance ? Number(formBalance) : 0,
+          description: formDescription.trim() || undefined,
+        });
+      } else {
+        await createAccount(credentials, {
+          name: formName.trim(),
+          group: formGroup,
+          amount: formBalance ? Number(formBalance) : 0,
+          description: formDescription.trim() || undefined,
+        });
+      }
+      cancelForm();
       load();
     } catch (e: any) {
-      Alert.alert('Error', e?.message ?? 'Failed to create account');
+      Alert.alert('Error', e?.message ?? 'Failed to save account');
     } finally {
       setSaving(false);
     }
@@ -177,22 +202,33 @@ export default function AccountsScreen() {
 
   const cancelForm = () => {
     setShowForm(false);
+    setEditingId(null);
     setFormName('');
     setFormBalance('');
-    setFormType('bank');
+    setFormDescription('');
+    setFormGroup('Accounts');
   };
+
+  // Group accounts by group field
+  const grouped = accounts.reduce((acc, a) => {
+    const key = (a.group ?? a.type) as string;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(a);
+    return acc;
+  }, {} as Record<string, ApiAccount[]>);
+
+  const groupedSections = Object.entries(grouped);
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" backgroundColor={colors.bg} />
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.headerBack}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Accounts</Text>
-        <TouchableOpacity onPress={() => setShowForm(v => !v)}>
+        <TouchableOpacity onPress={() => { cancelForm(); setShowForm(v => !v); }}>
           <Text style={styles.headerAdd}>{showForm ? '✕' : '+ Add'}</Text>
         </TouchableOpacity>
       </View>
@@ -205,9 +241,7 @@ export default function AccountsScreen() {
           <Text style={styles.loadingText}>Loading accounts…</Text>
         </View>
       ) : (
-        <FlatList
-          data={accounts}
-          keyExtractor={item => String(item.id)}
+        <ScrollView
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -217,94 +251,108 @@ export default function AccountsScreen() {
               tintColor={colors.textMuted}
             />
           }
-          ListHeaderComponent={
-            showForm ? (
-              <View style={styles.form}>
-                <Text style={styles.formTitle}>New Account</Text>
-                <TextInput
-                  style={styles.formInput}
-                  value={formName}
-                  onChangeText={setFormName}
-                  placeholder="Account name"
-                  placeholderTextColor={colors.textMuted}
-                  autoCorrect={false}
-                />
-                <TextInput
-                  style={styles.formInput}
-                  value={formBalance}
-                  onChangeText={setFormBalance}
-                  placeholder="Opening balance (optional)"
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                />
-                {/* Type picker */}
-                <Text style={styles.formLabel}>Type</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.typePicker}
+        >
+          {/* ── Add / Edit Form ── */}
+          {showForm && (
+            <View style={styles.form}>
+              <Text style={styles.formTitle}>{editingId ? 'Edit Account' : 'New Account'}</Text>
+              <TextInput
+                style={styles.formInput}
+                value={formName}
+                onChangeText={setFormName}
+                placeholder="Account name (e.g. HDFC Bank)"
+                placeholderTextColor={colors.textMuted}
+                autoCorrect={false}
+              />
+              <TextInput
+                style={styles.formInput}
+                value={formBalance}
+                onChangeText={setFormBalance}
+                placeholder="Opening balance (optional)"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="numeric"
+              />
+              <TextInput
+                style={styles.formInput}
+                value={formDescription}
+                onChangeText={setFormDescription}
+                placeholder="Description (optional)"
+                placeholderTextColor={colors.textMuted}
+              />
+              <Text style={styles.formLabel}>Group</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.groupPicker}
+              >
+                {ACCOUNT_GROUPS.map(g => {
+                  const selected = formGroup === g;
+                  const gc = GROUP_COLORS[g];
+                  return (
+                    <TouchableOpacity
+                      key={g}
+                      onPress={() => setFormGroup(g)}
+                      style={[
+                        styles.groupChip,
+                        selected
+                          ? { backgroundColor: gc + '33', borderColor: gc }
+                          : { backgroundColor: colors.card, borderColor: colors.border },
+                      ]}
+                    >
+                      <Text style={[styles.groupChipText, { color: selected ? gc : colors.textMuted }]}>
+                        {ACCOUNT_GROUP_LABELS[g]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+              <View style={styles.formBtns}>
+                <TouchableOpacity
+                  style={[styles.formBtn, styles.formBtnPrimary, !formName.trim() && { opacity: 0.5 }]}
+                  onPress={handleSave}
+                  disabled={!formName.trim() || saving}
                 >
-                  {ACCOUNT_TYPES.map(t => {
-                    const selected = formType === t;
-                    const tc = TYPE_COLORS[t];
-                    return (
-                      <TouchableOpacity
-                        key={t}
-                        onPress={() => setFormType(t)}
-                        style={[
-                          styles.typeChip,
-                          selected
-                            ? { backgroundColor: tc + '33', borderColor: tc }
-                            : { backgroundColor: colors.card, borderColor: colors.border },
-                        ]}
-                      >
-                        <Text style={[styles.typeChipText, { color: selected ? tc : colors.textMuted }]}>
-                          {ACCOUNT_TYPE_LABELS[t]}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-                <View style={styles.formBtns}>
-                  <TouchableOpacity
-                    style={[styles.formBtn, styles.formBtnPrimary, !formName.trim() && { opacity: 0.5 }]}
-                    onPress={handleCreate}
-                    disabled={!formName.trim() || saving}
-                  >
-                    {saving ? (
-                      <ActivityIndicator size="small" color={colors.surface} />
-                    ) : (
-                      <Text style={styles.formBtnPrimaryText}>Create Account</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.formBtn} onPress={cancelForm}>
-                    <Text style={styles.formBtnText}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
+                  {saving ? (
+                    <ActivityIndicator size="small" color={colors.surface} />
+                  ) : (
+                    <Text style={styles.formBtnPrimaryText}>{editingId ? 'Save Changes' : 'Create Account'}</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.formBtn} onPress={cancelForm}>
+                  <Text style={styles.formBtnText}>Cancel</Text>
+                </TouchableOpacity>
               </View>
-            ) : null
-          }
-          ListEmptyComponent={
-            !showForm ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyText}>No accounts yet.</Text>
-                <Text style={styles.emptySub}>Tap "+ Add" to create one.</Text>
-              </View>
-            ) : null
-          }
-          renderItem={({ item }) => (
-            <AccountRow
-              account={item}
-              onDelete={() => handleDelete(item)}
-              onPress={() =>
-                navigation.navigate('AccountDetail', {
-                  accountId: item.id,
-                  accountName: item.name,
-                })
-              }
-            />
+            </View>
           )}
-        />
+
+          {/* ── Grouped Accounts ── */}
+          {groupedSections.length === 0 && !showForm ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>No accounts yet.</Text>
+              <Text style={styles.emptySub}>Tap "+ Add" to create one.</Text>
+            </View>
+          ) : (
+            groupedSections.map(([group, accs]) => (
+              <View key={group} style={styles.groupSection}>
+                <Text style={styles.groupSectionLabel}>{ACCOUNT_GROUP_LABELS[group as AccountGroup] ?? group}</Text>
+                {accs.map(item => (
+                  <AccountRow
+                    key={item.id}
+                    account={item}
+                    onDelete={() => handleDelete(item)}
+                    onEdit={() => startEdit(item)}
+                    onPress={() =>
+                      navigation.navigate('AccountDetail', {
+                        accountId: item.id,
+                        accountName: item.name,
+                      })
+                    }
+                  />
+                ))}
+              </View>
+            ))
+          )}
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -328,10 +376,8 @@ const styles = StyleSheet.create({
   headerAdd: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textPrimary, minWidth: 40, textAlign: 'right' },
 
   errorText: { margin: spacing.md, fontSize: fontSize.sm, color: '#F87171' },
-
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md },
   loadingText: { fontSize: fontSize.sm, color: colors.textMuted },
-
   listContent: { padding: spacing.md, gap: spacing.sm, paddingBottom: 40 },
 
   // Account row
@@ -349,28 +395,33 @@ const styles = StyleSheet.create({
   rowTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   accountName: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textPrimary, flex: 1, marginRight: spacing.sm },
   accountBalance: { fontSize: fontSize.md, fontWeight: fontWeight.bold },
+  accountDesc: { fontSize: fontSize.xs, color: colors.textMuted, flex: 1 },
   rowBottom: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap' },
-
   typeBadge: {
-    borderRadius: radius.full,
-    borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    borderRadius: radius.full, borderWidth: 1,
+    paddingHorizontal: 8, paddingVertical: 2,
   },
   typeBadgeText: { fontSize: fontSize.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.4 },
-
   linkedBadge: {
     backgroundColor: colors.savings + '22',
     borderRadius: radius.full,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 8, paddingVertical: 2,
   },
   linkedBadgeText: { fontSize: fontSize.xs, color: colors.savings, fontWeight: fontWeight.medium },
-
-  deleteBtn: { padding: spacing.md },
+  rowActions: { flexDirection: 'column', gap: 4, paddingRight: spacing.sm },
+  editBtn: { padding: spacing.xs },
+  editBtnText: { fontSize: 14, color: colors.textMuted },
+  deleteBtn: { padding: spacing.xs },
   deleteBtnText: { fontSize: fontSize.md, color: colors.textMuted },
-  deleteDisabled: { padding: spacing.md },
+  deleteDisabled: { padding: spacing.xs },
   deleteDisabledText: { fontSize: fontSize.md, opacity: 0.4 },
+
+  // Group sections
+  groupSection: { gap: spacing.xs },
+  groupSectionLabel: {
+    fontSize: fontSize.xs, fontWeight: fontWeight.bold, color: colors.textMuted,
+    textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: spacing.xs,
+  },
 
   // Form
   form: {
@@ -384,24 +435,18 @@ const styles = StyleSheet.create({
   },
   formTitle: { fontSize: fontSize.md, fontWeight: fontWeight.semibold, color: colors.textPrimary },
   formInput: {
-    backgroundColor: colors.bg,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: fontSize.md,
-    color: colors.textPrimary,
+    backgroundColor: colors.bg, borderRadius: radius.sm,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    fontSize: fontSize.md, color: colors.textPrimary,
   },
   formLabel: { fontSize: fontSize.xs, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  typePicker: { gap: spacing.sm, paddingVertical: spacing.xs },
-  typeChip: {
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+  groupPicker: { gap: spacing.sm, paddingVertical: spacing.xs },
+  groupChip: {
+    borderRadius: radius.full, borderWidth: 1.5,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs,
   },
-  typeChipText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium },
+  groupChipText: { fontSize: fontSize.sm, fontWeight: fontWeight.medium },
   formBtns: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xs },
   formBtn: {
     flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm,

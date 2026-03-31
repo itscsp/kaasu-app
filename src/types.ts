@@ -1,26 +1,24 @@
 // ─── API Types ────────────────────────────────────────────────────────────────
 
-export type TransactionType = 'income' | 'expenses' | 'loan';
+export type TransactionType = 'income' | 'expenses' | 'transfer';
 
-export type TagStatus = 'DONE' | 'PENDING';
+export type PlanStatus = 'DONE' | 'PENDING';
 
 export interface ApiTransaction {
   id: number;
   date: string;
   amount: number;
   type: TransactionType;
-  title?: string;
-  description?: string;
   notes?: string;
   tags?: number[];
   account_id?: number;
+  to_account_id?: number;
 }
 
 export interface ApiSummary {
-  income: number;
-  expenses: number;
-  loan: number;
-  balance: number;
+  total_income: number;
+  total_expenses: number;
+  net_balance: number;
   accounts?: ApiAccount[];
 }
 
@@ -36,22 +34,25 @@ export interface ApiTag {
   id: number;
   name: string;
   slug?: string;
-  status?: TagStatus;
 }
 
 export interface ApiPlan {
   id: number;
   title: string;
   amount: number;
+  status?: PlanStatus;
 }
 
-export type AccountType = 'bank' | 'cash' | 'loan' | 'investment' | 'other';
+export type AccountGroup = 'Cash' | 'Accounts' | 'Investment' | 'Loan' | 'Insurance' | 'Saving';
 
 export interface ApiAccount {
   id: number;
   name: string;
-  type: AccountType;
+  type: AccountGroup;
+  group: AccountGroup;
   balance: number;
+  amount?: number;
+  description?: string;
   is_connected: boolean;
   transaction_count: number;
 }

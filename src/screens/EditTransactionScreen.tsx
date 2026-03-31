@@ -26,7 +26,7 @@ type RouteProps = RouteProp<RootStackParamList, 'EditTransaction'>;
 const TYPES: { value: TransactionType; label: string }[] = [
   { value: 'expenses', label: 'Expenses' },
   { value: 'income', label: 'Income' },
-  { value: 'loan', label: 'Loan' },
+  { value: 'transfer', label: 'Transfer' },
 ];
 
 export default function EditTransactionScreen() {
@@ -38,11 +38,11 @@ export default function EditTransactionScreen() {
 
   const [type, setType] = useState<TransactionType>(transaction.type);
   const [amount, setAmount] = useState(String(transaction.amount));
-  const [title, setTitle] = useState(transaction.title ?? '');
-  const [description, setDescription] = useState(transaction.description ?? '');
+  const [notes, setNotes] = useState(transaction.notes ?? '');
   const [date, setDate] = useState(transaction.date);
   const [selectedTags, setSelectedTags] = useState<number[]>(transaction.tags ?? []);
   const [accountId, setAccountId] = useState<number | null>(transaction.account_id ?? null);
+  const [toAccountId, setToAccountId] = useState<number | null>(transaction.to_account_id ?? null);
   const [showTypeMenu, setShowTypeMenu] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -71,10 +71,10 @@ export default function EditTransactionScreen() {
         date,
         amount: Number(amount),
         type,
-        title: title.trim() || undefined,
-        description: description.trim() || undefined,
+        notes: notes.trim() || undefined,
         tags: selectedTags.length > 0 ? selectedTags : undefined,
         account_id: accountId || undefined,
+        to_account_id: type === 'transfer' && toAccountId ? toAccountId : undefined,
       });
       navigation.goBack();
     } catch (e: any) {
@@ -131,16 +131,6 @@ export default function EditTransactionScreen() {
           </View>
         )}
 
-        {/* ── Title ── */}
-        <TextInput
-          style={styles.inputField}
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Title (optional)"
-          placeholderTextColor={colors.textMuted}
-          returnKeyType="next"
-        />
-
         {/* ── Amount ── */}
         <TextInput
           style={styles.inputField}
@@ -152,17 +142,17 @@ export default function EditTransactionScreen() {
           returnKeyType="done"
         />
 
-        {/* ── Description ── */}
-        <View style={styles.descWrap}>
-          <Text style={styles.descLabel}>Description</Text>
+        {/* ── Notes ── */}
+        <View style={styles.notesWrap}>
+          <Text style={styles.notesLabel}>Notes</Text>
           <TextInput
             style={styles.textArea}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Some description about the transaction"
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Notes (optional)"
             placeholderTextColor={colors.textMuted}
             multiline
-            numberOfLines={4}
+            numberOfLines={3}
             textAlignVertical="top"
           />
         </View>
@@ -178,14 +168,14 @@ export default function EditTransactionScreen() {
           returnKeyType="done"
         />
 
-        {/* ── Accounts ── */}
+        {/* ── Source Account ── */}
         {accounts && accounts.length > 0 && (
           <View style={styles.tagsSection}>
-            <Text style={styles.tagsLabel}>Account</Text>
+            <Text style={styles.tagsLabel}>{type === 'transfer' ? 'From Account' : 'Account'}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.tagsList}
+              contentContainerStyle={styles.tagsListH}
             >
               {accounts.map(acc => {
                 const selected = accountId === acc.id;
@@ -201,6 +191,35 @@ export default function EditTransactionScreen() {
                   </TouchableOpacity>
                 );
               })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* ── Destination Account (transfer only) ── */}
+        {type === 'transfer' && accounts && accounts.length > 0 && (
+          <View style={styles.tagsSection}>
+            <Text style={styles.tagsLabel}>To Account</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagsListH}
+            >
+              {accounts
+                .filter(acc => acc.id !== accountId)
+                .map(acc => {
+                  const selected = toAccountId === acc.id;
+                  return (
+                    <TouchableOpacity
+                      key={acc.id}
+                      style={[styles.tagChip, selected && styles.tagChipSelectedTransfer]}
+                      onPress={() => setToAccountId(selected ? null : acc.id)}
+                    >
+                      <Text style={[styles.tagChipText, selected && styles.tagChipTextSelected]}>
+                        {acc.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
             </ScrollView>
           </View>
         )}
@@ -281,24 +300,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     fontSize: fontSize.md, color: colors.textPrimary,
   },
-
-  descWrap: {
+  notesWrap: {
     backgroundColor: colors.card, borderRadius: radius.md,
     borderWidth: 1, borderColor: colors.border,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
   },
-  descLabel: { fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing.xs, paddingTop: spacing.xs },
-  textArea: { fontSize: fontSize.md, color: colors.textPrimary, minHeight: 80, textAlignVertical: 'top' },
+  notesLabel: { fontSize: fontSize.xs, color: colors.textMuted, marginBottom: spacing.xs, paddingTop: spacing.xs },
+  textArea: { fontSize: fontSize.md, color: colors.textPrimary, minHeight: 72, textAlignVertical: 'top' },
 
   tagsSection: { gap: spacing.xs },
   tagsLabel: { fontSize: fontSize.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
   tagsList: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  tagsListH: { flexDirection: 'row', gap: spacing.xs, paddingVertical: spacing.xs },
   tagChip: {
     paddingHorizontal: spacing.sm, paddingVertical: spacing.xs,
     borderRadius: radius.full, borderWidth: 1, borderColor: colors.border,
     backgroundColor: colors.card,
   },
   tagChipSelected: { backgroundColor: colors.textPrimary, borderColor: colors.textPrimary },
+  tagChipSelectedTransfer: { backgroundColor: colors.investment, borderColor: colors.investment },
   tagChipText: { fontSize: fontSize.xs, color: colors.textSecondary },
   tagChipTextSelected: { color: colors.surface, fontWeight: fontWeight.medium },
 

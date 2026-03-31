@@ -5,7 +5,7 @@ import {
   ApiTag,
   ApiPlan,
   ApiAccount,
-  TagStatus,
+  PlanStatus,
   TransactionType,
 } from './types';
 
@@ -26,6 +26,19 @@ function normalizeTransaction(t: any): ApiTransaction {
     ...t,
     amount: Number(t?.amount ?? 0),
     tags: Array.isArray(t?.tags) ? t.tags.map(Number) : [],
+    notes: t?.notes ?? t?.description ?? '',
+  };
+}
+
+function normalizeAccount(a: any): ApiAccount {
+  return {
+    ...a,
+    balance: Number(a?.balance ?? a?.amount ?? 0),
+    amount: Number(a?.amount ?? a?.balance ?? 0),
+    group: a?.group ?? a?.type ?? 'Accounts',
+    type: a?.group ?? a?.type ?? 'Accounts',
+    is_connected: Boolean(a?.is_connected),
+    transaction_count: Number(a?.transaction_count ?? 0),
   };
 }
 
@@ -178,17 +191,11 @@ export async function deleteBudget(credentials: string, id: number): Promise<voi
 export async function getBudgetSummary(credentials: string, id: number): Promise<ApiSummary> {
   const raw = await request<any>(`${BASE_URL}/budgets/${id}/summary`, credentials);
   return {
-    income: Number(raw?.income ?? 0),
-    expenses: Number(raw?.expenses ?? 0),
-    loan: Number(raw?.loan ?? 0),
-    balance: Number(raw?.balance ?? 0),
+    total_income: Number(raw?.total_income ?? raw?.income ?? 0),
+    total_expenses: Number(raw?.total_expenses ?? raw?.expenses ?? 0),
+    net_balance: Number(raw?.net_balance ?? raw?.balance ?? 0),
     accounts: Array.isArray(raw?.accounts)
-      ? raw.accounts.map((a: any) => ({
-          ...a,
-          balance: Number(a?.balance ?? a?.amount ?? 0),
-          is_connected: Boolean(a?.is_connected),
-          transaction_count: Number(a?.transaction_count ?? 0),
-        }))
+      ? raw.accounts.map(normalizeAccount)
       : undefined,
   };
 }
@@ -214,11 +221,10 @@ export async function addApiTransaction(
     date: string;
     amount: number;
     type: TransactionType;
-    title?: string;
-    description?: string;
     notes?: string;
     tags?: number[];
     account_id?: number;
+    to_account_id?: number;
   }
 ): Promise<ApiTransaction> {
   return request<ApiTransaction>(
@@ -236,11 +242,10 @@ export async function updateApiTransaction(
     date: string;
     amount: number;
     type: TransactionType;
-    title: string;
-    description: string;
     notes: string;
     tags: number[];
     account_id: number;
+    to_account_id: number;
   }>
 ): Promise<ApiTransaction> {
   return request<ApiTransaction>(
@@ -271,18 +276,7 @@ export async function getTags(credentials: string): Promise<ApiTag[]> {
 export async function createTag(credentials: string, name: string): Promise<ApiTag> {
   return request<ApiTag>(`${BASE_URL}/tags`, credentials, {
     method: 'POST',
-    body: JSON.stringify({ name, status: 'PENDING' }),
-  });
-}
-
-export async function updateTag(
-  credentials: string,
-  id: number,
-  data: { status: 'DONE' | 'PENDING' }
-): Promise<ApiTag> {
-  return request<ApiTag>(`${BASE_URL}/tags/${id}`, credentials, {
-    method: 'PUT',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ name }),
   });
 }
 
@@ -299,7 +293,7 @@ export async function getPlans(credentials: string, budgetId: number): Promise<A
 export async function createPlan(
   credentials: string,
   budgetId: number,
-  data: { title: string; amount: number }
+  data: { title: string; amount: number; status?: PlanStatus }
 ): Promise<ApiPlan> {
   return request<ApiPlan>(`${BASE_URL}/budgets/${budgetId}/plans`, credentials, {
     method: 'POST',
@@ -311,7 +305,7 @@ export async function updatePlan(
   credentials: string,
   budgetId: number,
   planId: number,
-  data: { title: string; amount: number }
+  data: { title: string; amount: number; status?: PlanStatus }
 ): Promise<ApiPlan> {
   return request<ApiPlan>(
     `${BASE_URL}/budgets/${budgetId}/plans/${planId}`,
@@ -336,24 +330,30 @@ export async function deletePlan(
 
 export async function getAccounts(credentials: string): Promise<ApiAccount[]> {
   const raw = await request<any[]>(`${BASE_URL}/accounts`, credentials);
-  return Array.isArray(raw)
-    ? raw.map(a => ({
-        ...a,
-        balance: Number(a?.balance ?? 0),
-        is_connected: Boolean(a?.is_connected),
-        transaction_count: Number(a?.transaction_count ?? 0),
-      }))
-    : [];
+  return Array.isArray(raw) ? raw.map(normalizeAccount) : [];
 }
 
 export async function createAccount(
   credentials: string,
-  data: { name: string; type: string; balance?: number }
+  data: { name: string; group: string; amount?: number; description?: string }
 ): Promise<ApiAccount> {
-  return request<ApiAccount>(`${BASE_URL}/accounts`, credentials, {
+  const raw = await request<any>(`${BASE_URL}/accounts`, credentials, {
     method: 'POST',
     body: JSON.stringify(data),
   });
+  return normalizeAccount(raw);
+}
+
+export async function updateAccount(
+  credentials: string,
+  id: number,
+  data: { name?: string; group?: string; amount?: number; description?: string }
+): Promise<ApiAccount> {
+  const raw = await request<any>(`${BASE_URL}/accounts/${id}`, credentials, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return normalizeAccount(raw);
 }
 
 export async function deleteAccount(credentials: string, id: number): Promise<void> {
